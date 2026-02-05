@@ -1,0 +1,9 @@
+{
+  "name": "Gemynd Story Scribe",
+  "description": "An AI-powered application to capture, analyze, and preserve life stories from interviews and documents.",
+  "requestFramePermissions": [
+    "microphone",
+    "camera",
+    "geolocation"
+  ]
+}
