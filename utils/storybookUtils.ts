@@ -1,4 +1,3 @@
-
 // These are loaded from CDN in index.html
 import { StorybookPage, StoryArchiveItem, PresentationSlide, StoryExtraction, GeneratedImage } from '../types';
 import { Theme } from '../components/presentationThemes';
@@ -6,9 +5,8 @@ import { Theme } from '../components/presentationThemes';
 const jspdf = (typeof window !== 'undefined') ? (window as any).jspdf : undefined;
 
 // Helper to split text into chunks of roughly N paragraphs
-const splitNarrativeIntoChunks = (text: string, paragraphsPerChunk: number = 3): string[] => {
+const splitNarrativeIntoChunks = (text: string, paragraphsPerChunk: number = 2): string[] => {
     if (!text) return [];
-    // Ensure text is a string to prevent errors
     const safeText = String(text);
     const paragraphs = safeText.split('\n\n').filter(p => p.trim().length > 0);
     const chunks: string[] = [];
@@ -20,14 +18,15 @@ const splitNarrativeIntoChunks = (text: string, paragraphsPerChunk: number = 3):
 };
 
 export const generatePages = (story: StoryArchiveItem): StorybookPage[] => {
-    // Robust null check for the entire object
+    // CRITICAL FIX: Robust null check for the entire object to prevent cascading errors in useMemo
     if (!story || !story.narrative) return [];
     
     const pages: StorybookPage[] = [];
-    const validImages = (story.generatedImages || []).filter(img => img.success && img.image_url);
+    const validImages = (story.generatedImages || []).filter(img => img && img.success && img.image_url);
     
-    // SAFE TIMELINE ACCESS: Use optional chaining and ensure default array
-    const timeline = [...(story?.extraction?.timeline || [])].sort((a, b) => {
+    // SAFE TIMELINE ACCESS: Ensure array existence before spread
+    const rawTimeline = story?.extraction?.timeline || [];
+    const timeline = [...rawTimeline].sort((a, b) => {
          const yearA = parseInt(String(a.year), 10) || 0;
          const yearB = parseInt(String(b.year), 10) || 0;
          return yearA - yearB;
@@ -71,15 +70,16 @@ export const generatePages = (story: StoryArchiveItem): StorybookPage[] => {
         // Interstitial Timeline Page (Context)
         if (timelineIndex < timeline.length) {
             const event = timeline[timelineIndex];
-            const eventImage = getNextImage();
-            
-            pages.push({
-                title: String(event.year || 'Unknown Time'),
-                content: `**${String(event.event || 'Event')}**\n\n${String(event.significance || '')}`,
-                imageUrl: eventImage?.image_url,
-                imagePrompt: eventImage?.prompt,
-                year: String(event.year) 
-            });
+            if (event) {
+                const eventImage = getNextImage();
+                pages.push({
+                    title: String(event.year || 'Unknown Time'),
+                    content: `**${String(event.event || 'Event')}**\n\n${String(event.significance || '')}`,
+                    imageUrl: eventImage?.image_url,
+                    imagePrompt: eventImage?.prompt,
+                    year: String(event.year) 
+                });
+            }
             timelineIndex++;
         }
     });
@@ -87,13 +87,15 @@ export const generatePages = (story: StoryArchiveItem): StorybookPage[] => {
     // 3. Remaining Timeline Events
     while (timelineIndex < timeline.length) {
          const event = timeline[timelineIndex];
-         const eventImage = getNextImage();
-         pages.push({
-            title: `${String(event.year)}: ${String(event.event)}`,
-            content: String(event.significance),
-            imageUrl: eventImage?.image_url,
-            year: String(event.year)
-         });
+         if (event) {
+            const eventImage = getNextImage();
+            pages.push({
+                title: `${String(event.year)}: ${String(event.event)}`,
+                content: String(event.significance),
+                imageUrl: eventImage?.image_url,
+                year: String(event.year)
+            });
+         }
          timelineIndex++;
     }
     
@@ -110,11 +112,13 @@ export const generatePages = (story: StoryArchiveItem): StorybookPage[] => {
 
     // 5. Key Locations
     if (story.extraction?.locations && story.extraction.locations.length > 0) {
-        const locText = story.extraction.locations.map(l => `📍 **${String(l.name)}** (${String(l.type)})`).join('\n');
-        pages.push({
-            title: "Places of Memory",
-            content: locText,
-        });
+        const locText = story.extraction.locations.map(l => l?.name ? `📍 **${String(l.name)}** (${String(l.type || 'Location')})` : null).filter(Boolean).join('\n');
+        if (locText) {
+            pages.push({
+                title: "Places of Memory",
+                content: locText,
+            });
+        }
     }
 
     // 6. Video Finale
@@ -225,7 +229,7 @@ export const exportStoryToPdf = async (pages: StorybookPage[], storyName: string
             doc.setTextColor(0);
         }
 
-        const safeFilename = storyName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        const safeFilename = (storyName || 'legacy').replace(/[^a-z0-9]/gi, '_').toLowerCase();
         doc.save(`${safeFilename}_storybook.pdf`);
 
     } catch (error) {
@@ -320,7 +324,7 @@ export const exportPresentationToPdf = async (slides: PresentationSlide[], story
       }
     }
 
-    const safeFilename = storyName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    const safeFilename = (storyName || 'legacy').replace(/[^a-z0-9]/gi, '_').toLowerCase();
     doc.save(`${safeFilename}_presentation.pdf`);
 
   } catch (error) {

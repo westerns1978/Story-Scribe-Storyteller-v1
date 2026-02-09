@@ -40,7 +40,8 @@ export const getArchivedStories = async (): Promise<StoryArchiveItem[]> => {
           emotional_journey: extraction.emotional_journey || metadata.emotional_journey,
           artifacts: extraction.artifacts || metadata.artifacts || []
         },
-        generatedImages: row.generated_images || metadata.images || [],
+        // Corrected mapping: Use row.assets.images as primary source
+        generatedImages: row.assets?.images || row.generated_images || metadata.images || [],
         videoUrl: row.video_url,
         background_music_url: row.background_music_url,
         artifacts: extraction.artifacts || metadata.artifacts || [],
@@ -64,6 +65,7 @@ export async function saveStory(story: StoryArchiveItem): Promise<void> {
         narrative: story.narrative,
         extraction: story.extraction, 
         storyboard: story.storyboard || story.extraction?.storyboard, 
+        assets: { images: story.generatedImages || [], videos: [], audio: [] },
         generated_images: story.generatedImages, 
         background_music_url: story.background_music_url,
         org_id: DEFAULT_ORG_ID,

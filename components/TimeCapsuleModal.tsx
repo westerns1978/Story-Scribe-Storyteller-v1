@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { GoogleGenAI } from "@google/genai";
 import XMarkIcon from './icons/XMarkIcon';
@@ -42,7 +41,8 @@ const TimeCapsuleModal: React.FC<TimeCapsuleModalProps> = ({ isOpen, onClose, ye
 
         try {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-            // FIX: Updated to 'gemini-3-flash-preview' for basic text tasks with search grounding support
+            // Gemini API rules: DO NOT use responseMimeType: 'application/json' with googleSearch tool.
+            // We will request JSON in the prompt and parse the text output.
             const prompt = `Search for historical records from ${year}${location ? ` in ${location}` : ''}. 
             Construct a Time Capsule JSON object with:
             "news": 3 actual major headlines from that exact year.
@@ -50,19 +50,25 @@ const TimeCapsuleModal: React.FC<TimeCapsuleModalProps> = ({ isOpen, onClose, ye
             "music": 3 top songs from ${year}.
             "prices": 3 real-world cost-of-living examples from ${year}.
             "context": 2-sentence vibe check.
-            Format as clean JSON only.`;
+            Return ONLY the JSON block.`;
 
             const response = await ai.models.generateContent({
-                model: 'gemini-3-flash-preview',
+                model: 'gemini-2.0-flash',
                 contents: prompt,
                 config: { 
-                    responseMimeType: 'application/json',
                     tools: [{ googleSearch: {} }] 
                 }
             });
 
             if (response.text) {
-                setData(JSON.parse(response.text));
+                // Attempt to find and parse JSON from the response text
+                const text = response.text;
+                const jsonMatch = text.match(/\{[\s\S]*\}/);
+                if (jsonMatch) {
+                    setData(JSON.parse(jsonMatch[0]));
+                } else {
+                    throw new Error("Invalid format received from historical archives.");
+                }
                 setGroundingChunks(response.candidates?.[0]?.groundingMetadata?.groundingChunks || []);
             }
         } catch (err) {

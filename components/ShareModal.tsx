@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import JSZip from 'jszip';
 import { ActiveStory, StoryArchiveItem } from '../types';
@@ -8,6 +8,7 @@ import ImageIcon from './icons/ImageIcon';
 import FilePdfIcon from './icons/FilePdfIcon';
 import { exportStoryToPdf, generatePages } from '../utils/storybookUtils';
 import Loader2Icon from './icons/Loader2Icon';
+import PrinterIcon from './icons/PrintIcon';
 
 interface ShareModalProps {
     isOpen: boolean;
@@ -18,45 +19,79 @@ interface ShareModalProps {
 
 const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, story, showToast }) => {
     const [isExportingImages, setIsExportingImages] = useState(false);
-    const [copyStatus, setCopyStatus] = useState('Copy Link');
+    const [copyStatus, setCopyStatus] = useState('Copy Private Link');
 
-    if (!story) return null;
-    if (!isOpen) return null;
+    const storyUrl = useMemo(() => {
+        if (!story?.sessionId) return '';
+        return `${window.location.origin}?story=${story.sessionId}`;
+    }, [story?.sessionId]);
 
-    const storyUrl = `${window.location.origin}/legacy/${story.sessionId || (story as any).id || 'unknown'}`;
-    const summary = story.summary || story.extraction?.summary || "A Gemynd Legacy Archive.";
-    const storyTitle = story.storytellerName || 'Legacy Story';
+    const storyTitle = useMemo(() => story?.storytellerName || 'Legacy Story', [story?.storytellerName]);
+
+    if (!isOpen || !story) return null;
+
+    const handlePrintTag = () => {
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) return;
+
+        printWindow.document.write(`
+            <html>
+                <head>
+                    <title>Gemynd Archive Tag</title>
+                    <style>
+                        body { font-family: 'Playfair Display', serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f9f7f2; }
+                        .tag { width: 300px; padding: 40px; border: 2px solid #962D2D; border-radius: 20px; text-align: center; background: white; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+                        .logo { width: 60px; margin-bottom: 20px; }
+                        h1 { margin: 10px 0; font-size: 24px; color: #1a1715; }
+                        p { font-size: 10px; text-transform: uppercase; letter-spacing: 2px; color: #962D2D; font-weight: 900; margin-bottom: 30px; }
+                        .qr-wrap { padding: 15px; background: #f9f7f2; border-radius: 15px; display: inline-block; }
+                        footer { margin-top: 30px; font-size: 8px; opacity: 0.3; text-transform: uppercase; }
+                    </style>
+                </head>
+                <body>
+                    <div class="tag">
+                        <img src="https://storage.googleapis.com/gemynd-public/projects/gemynd-portal/gemnyd-branding/Gemynd_Logo_Red_Version.png" class="logo" />
+                        <h1>${storyTitle}</h1>
+                        <p>Lexington Archive Node</p>
+                        <div class="qr-wrap" id="qr"></div>
+                        <footer>Scan to materialise legacy</footer>
+                    </div>
+                    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+                    <script>
+                        new QRCode(document.getElementById("qr"), {
+                            text: "${storyUrl}",
+                            width: 128,
+                            height: 128,
+                            colorDark : "#1a1715",
+                            colorLight : "#f9f7f2",
+                            correctLevel : QRCode.CorrectLevel.H
+                        });
+                        setTimeout(() => window.print(), 500);
+                    </script>
+                </body>
+            </html>
+        `);
+        printWindow.document.close();
+    };
 
     const handleCopyLink = () => {
-        try {
-            navigator.clipboard.writeText(storyUrl).then(() => {
-                setCopyStatus('Copied!');
-                showToast?.("Link secured to clipboard.", "success");
-                setTimeout(() => setCopyStatus('Copy Link'), 2000);
-            });
-        } catch (e) {
-            showToast?.("Clipboard access denied.", "error");
-        }
+        if (!storyUrl) return;
+        navigator.clipboard.writeText(storyUrl).then(() => {
+            setCopyStatus('Copied to Clipboard!');
+            if (showToast) showToast("Link secured.", "success");
+            setTimeout(() => setCopyStatus('Copy Private Link'), 2000);
+        });
     };
 
     const handleDownloadPdf = async () => {
-        try {
-            showToast?.("Synthesizing Legacy PDF...", "success");
-            const pages = generatePages(story as StoryArchiveItem);
-            if (!pages || pages.length === 0) throw new Error("No pages generated");
-            await exportStoryToPdf(pages, storyTitle);
-        } catch (e) {
-            console.error("PDF Fail", e);
-            showToast?.("PDF Generation Node Failure.", "error");
-        }
+        if (!story || !story.narrative) return;
+        const pages = generatePages(story as StoryArchiveItem);
+        await exportStoryToPdf(pages, storyTitle);
     };
 
     const handleDownloadImages = async () => {
-        const validImages = (story.generatedImages || []).filter(img => img.image_url && img.success);
-        if (validImages.length === 0) {
-            showToast?.("No visual artifacts detected.", "warn");
-            return;
-        }
+        const validImages = (story.generatedImages || []).filter(img => img && img.image_url && img.success);
+        if (validImages.length === 0) return;
 
         setIsExportingImages(true);
         try {
@@ -65,14 +100,9 @@ const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, story, showToa
             
             for (let i = 0; i < validImages.length; i++) {
                 const img = validImages[i];
-                try {
-                    const response = await fetch(img.image_url);
-                    const blob = await response.blob();
-                    const filename = `artifact_${i + 1}.png`;
-                    folder?.file(filename, blob);
-                } catch (e) {
-                    console.warn(`Failed to fetch image ${i}`, e);
-                }
+                const response = await fetch(img.image_url!);
+                const blob = await response.blob();
+                folder?.file(`artifact_${i + 1}.png`, blob);
             }
 
             const content = await zip.generateAsync({ type: "blob" });
@@ -80,137 +110,65 @@ const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, story, showToa
             link.href = URL.createObjectURL(content);
             link.download = `${storyTitle.replace(/\s+/g, '_')}_Vault.zip`;
             link.click();
-            showToast?.("Visual vault secured.", "success");
-        } catch (e) {
-            showToast?.("Compression node failed.", "error");
         } finally {
             setIsExportingImages(false);
         }
     };
 
-    const handleShareViaSMS = () => {
-        const text = `Explore the legacy of ${storyTitle}: ${storyUrl}`;
-        window.location.href = `sms:?&body=${encodeURIComponent(text)}`;
-    };
-
-    const handleShareViaEmail = () => {
-        const subject = `Legacy Archive: ${storyTitle}`;
-        const body = `I want to share this digital storybook with you. It preserves the cherished memories and artifacts of ${storyTitle}.\n\nView here: ${storyUrl}\n\nGenerated via Gemynd Story Scribe.`;
-        window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    };
-
-    const handleNativeShare = () => {
-        if (navigator.share) {
-            navigator.share({
-                title: `Legacy: ${storyTitle}`,
-                text: summary,
-                url: storyUrl,
-            }).catch((err) => {
-                if (err.name !== 'AbortError') showToast?.("Native share failed.", "error");
-            });
-        }
-    };
-
-    const SocialButton: React.FC<{ label: string; icon: React.ReactNode; onClick: () => void; color?: string }> = ({ label, icon, onClick, color }) => (
-        <button 
-            onClick={onClick}
-            className="flex flex-col items-center gap-3 p-5 glass-tier-2 rounded-3xl transition-all group hover:bg-white/10 active:scale-95"
-        >
-            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-2xl transition-transform group-hover:scale-110 ${color || 'text-white'}`}>
-                {icon}
-            </div>
-            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{label}</span>
-        </button>
-    );
-
     return (
         <div className="fixed inset-0 bg-black/95 backdrop-blur-2xl z-[500] flex items-center justify-center p-4 animate-fade-in" onClick={onClose}>
-            <div className="w-full max-w-2xl bg-[#0d0b0a] border border-white/10 rounded-[3.5rem] p-8 lg:p-12 shadow-[0_40px_100px_rgba(0,0,0,0.8)] relative overflow-hidden" onClick={e => e.stopPropagation()}>
-                {/* Decorative Rim Light */}
-                <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-gemynd-red to-transparent opacity-40" />
-                
-                <header className="flex justify-between items-center mb-10">
-                    <div className="flex items-center gap-4">
-                        <div className="p-3 bg-gemynd-oxblood/20 rounded-2xl border border-gemynd-oxblood/30">
-                            <ShareIcon className="w-6 h-6 text-gemynd-red" />
+            <div className="w-full max-w-2xl bg-[#0d0b0a] border border-white/10 rounded-[4rem] p-8 lg:p-14 shadow-[0_50px_100px_rgba(0,0,0,1)] relative overflow-hidden" onClick={e => e.stopPropagation()}>
+                <header className="flex justify-between items-center mb-12">
+                    <div className="flex items-center gap-5">
+                        <div className="p-4 bg-gemynd-oxblood/20 rounded-2xl border border-gemynd-oxblood/30 text-gemynd-red shadow-lg">
+                            <ShareIcon className="w-7 h-7" />
                         </div>
                         <div>
-                            <h2 className="text-3xl font-display font-black text-white tracking-tighter leading-none">Legacy Distribution</h2>
-                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.4em] mt-1.5">Secure Artifact Uplink</p>
+                            <h2 className="text-3xl font-display font-black text-white tracking-tighter leading-none">Share Legacy</h2>
+                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.5em] mt-2">Secure Artifact Distribution</p>
                         </div>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full text-white/30 transition-colors"><XMarkIcon className="w-7 h-7" /></button>
+                    <button onClick={onClose} className="p-3 bg-white/5 hover:bg-white/10 rounded-2xl text-white/30 transition-all transform active:scale-95 haptic-tap"><XMarkIcon className="w-7 h-7" /></button>
                 </header>
 
                 <main className="space-y-10">
-                    {/* QR and Link Node */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center bg-white/[0.03] p-8 rounded-[3rem] border border-white/5">
-                        <div className="flex flex-col items-center gap-4">
-                            <div className="bg-white p-5 rounded-[2rem] shadow-2xl transition-transform hover:scale-105 duration-500">
-                                {typeof QRCodeSVG !== 'undefined' ? (
-                                    <QRCodeSVG value={storyUrl} size={150} includeMargin={true} />
-                                ) : (
-                                    <div className="w-[150px] h-[150px] bg-slate-200 animate-pulse rounded-xl" />
-                                )}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-10 items-center bg-white/[0.03] p-10 rounded-[3.5rem] border border-white/5 shadow-inner">
+                        <div className="flex flex-col items-center gap-6">
+                            <div className="bg-white p-6 rounded-[2.5rem] shadow-[0_20px_40px_rgba(0,0,0,0.4)] transition-transform hover:scale-105 duration-500">
+                                <QRCodeSVG value={storyUrl} size={150} />
                             </div>
-                            <span className="text-[9px] font-black text-slate-500 uppercase tracking-[0.3em]">Neural Scanning Code</span>
+                            <button 
+                                onClick={handlePrintTag}
+                                className="flex items-center gap-3 text-[10px] font-black text-gemynd-agedGold uppercase tracking-widest hover:text-white transition-all haptic-tap"
+                            >
+                                <PrinterIcon className="w-4 h-4" /> Print Archive Tag
+                            </button>
                         </div>
                         
-                        <div className="space-y-6">
-                            <div className="p-4 bg-black/40 rounded-2xl border border-white/5 space-y-2">
-                                <label className="text-[9px] font-bold text-amber-500/50 uppercase tracking-widest ml-1">Direct URL</label>
-                                <div className="text-xs font-mono text-slate-300 truncate opacity-60 px-1">{storyUrl}</div>
+                        <div className="space-y-8">
+                            <div className="p-5 bg-black/60 rounded-2xl border border-white/5 space-y-3 shadow-inner">
+                                <label className="text-[9px] font-black text-amber-500/40 uppercase tracking-[0.4em] ml-1 block">Vault Entry URL</label>
+                                <div className="text-xs font-mono text-slate-400 truncate opacity-80 px-1 border-l border-amber-500/20">{storyUrl}</div>
                             </div>
                             <button 
                                 onClick={handleCopyLink} 
-                                className="w-full py-5 bg-white/5 hover:bg-white/10 border border-white/10 text-white font-black rounded-2xl transition-all active:scale-95 flex items-center justify-center gap-3 text-xs uppercase tracking-widest"
+                                className="w-full py-6 bg-white text-black font-black rounded-full transition-all text-xs uppercase tracking-[0.4em] shadow-2xl haptic-tap active:scale-95"
                             >
                                 {copyStatus}
                             </button>
                         </div>
                     </div>
 
-                    {/* Robust Sharing Options */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                        <SocialButton label="SMS Text" onClick={handleShareViaSMS} icon="📱" color="text-green-400" />
-                        <SocialButton label="Email" onClick={handleShareViaEmail} icon="✉️" color="text-blue-400" />
-                        <SocialButton label="Facebook" onClick={() => window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(storyUrl)}`)} icon="📘" color="text-blue-600" />
-                        <SocialButton label="WhatsApp" onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent("Explore this legacy: " + storyUrl)}`)} icon="💬" color="text-green-500" />
-                    </div>
-
-                    {/* Actions Grid */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <button 
-                            onClick={handleDownloadPdf} 
-                            className="py-6 bg-gemynd-oxblood hover:bg-gemynd-red text-white font-black rounded-3xl shadow-2xl transition-all active:scale-95 flex items-center justify-center gap-4 text-xs uppercase tracking-[0.2em]"
-                        >
+                        <button onClick={handleDownloadPdf} className="py-7 bg-gemynd-oxblood hover:bg-gemynd-red text-white font-black rounded-3xl shadow-xl transition-all flex items-center justify-center gap-4 text-[10px] uppercase tracking-[0.3em] haptic-tap active:scale-95 border border-white/5">
                             <FilePdfIcon className="w-5 h-5" /> Download Legacy PDF
                         </button>
-                        <button 
-                            onClick={handleDownloadImages}
-                            disabled={isExportingImages}
-                            className="py-6 bg-white/5 hover:bg-white/10 border border-white/10 text-white font-black rounded-3xl transition-all active:scale-95 flex items-center justify-center gap-4 text-xs uppercase tracking-[0.2em] disabled:opacity-30"
-                        >
-                            {isExportingImages ? <Loader2Icon className="w-5 h-5 animate-spin" /> : <ImageIcon className="w-5 h-5" />}
-                            Pack Visual Vault
+                        <button onClick={handleDownloadImages} disabled={isExportingImages} className="py-7 bg-white/5 hover:bg-white/10 border border-white/10 text-white font-black rounded-3xl shadow-xl transition-all flex items-center justify-center gap-4 text-[10px] uppercase tracking-[0.3em] haptic-tap active:scale-95 disabled:opacity-20">
+                            {isExportingImages ? <Loader2Icon className="w-5 h-5 animate-spin" /> : <ImageIcon className="w-5 h-5 text-gemynd-agedGold" />}
+                            Bundle Visual Assets
                         </button>
                     </div>
-
-                    {navigator.share && (
-                        <button 
-                            onClick={handleNativeShare}
-                            className="w-full py-4 text-slate-600 hover:text-white font-black text-[10px] uppercase tracking-[0.5em] transition-colors flex items-center justify-center gap-3"
-                        >
-                            <span className="w-1.5 h-1.5 rounded-full bg-slate-800" />
-                            Use Native Share Sheet
-                            <span className="w-1.5 h-1.5 rounded-full bg-slate-800" />
-                        </button>
-                    )}
                 </main>
-
-                <footer className="mt-10 pt-8 border-t border-white/5 text-center">
-                    <p className="text-[9px] text-white/10 font-mono tracking-[0.6em] uppercase">Lexington Distribution Node v4.2 • Secured</p>
-                </footer>
             </div>
         </div>
     );

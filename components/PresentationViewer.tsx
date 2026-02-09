@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ActiveStory, StoryArchiveItem } from '../types';
 import { warmTheme, modernTheme, classicTheme, Theme } from './presentationThemes';
@@ -12,6 +13,8 @@ interface PresentationViewerProps {
   isOpen: boolean;
   onClose: () => void;
   story: StoryArchiveItem | ActiveStory | null;
+  // FIX: Added theme prop to allow specifying the initial visual style of the presentation
+  theme?: Theme;
 }
 
 const themes: { [key: string]: Theme } = {
@@ -68,9 +71,13 @@ const SlideRenderer: React.FC<{ slide: any; theme: Theme; image: string | undefi
 };
 
 
-const PresentationViewer: React.FC<PresentationViewerProps> = ({ isOpen, onClose, story }) => {
+const PresentationViewer: React.FC<PresentationViewerProps> = ({ isOpen, onClose, story, theme: initialTheme }) => {
   const [currentSlide, setCurrentSlide] = useState(0);
-  const [activeTheme, setActiveTheme] = useState(() => localStorage.getItem('presentationTheme') || 'Warm Memoir');
+  // FIX: Default to provided theme's name if available, otherwise fallback to storage or default
+  const [activeTheme, setActiveTheme] = useState(() => {
+    if (initialTheme?.name && themes[initialTheme.name]) return initialTheme.name;
+    return localStorage.getItem('presentationTheme') || 'Warm Memoir';
+  });
   const [showControls, setShowControls] = useState(true);
   const controlsTimeoutRef = useRef<number | null>(null);
 

@@ -1,14 +1,16 @@
-
 <!DOCTYPE html>
 <html lang="en" class="light">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <link rel="manifest" href="./manifest.json">
+    <meta name="theme-color" content="#962D2D">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="theme-color" content="#F9F7F2">
-    <link rel="manifest" href="/manifest.json">
+    <meta name="apple-mobile-web-app-title" content="Story Scribe">
+    
     <title>Gemynd | Story Scribe</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -62,6 +64,10 @@
         --text-main: #F9F7F2;
         --text-secondary: #D1CDC7;
         --text-muted: #8C8884;
+      }
+
+      html, body {
+        overscroll-behavior-y: contain;
       }
 
       body { 
@@ -148,5 +154,14 @@
   <body class="paper-grain">
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+          window.addEventListener('load', () => {
+              navigator.serviceWorker.register('./service-worker.js')
+                  .then(reg => console.log('Story Scribe SW:', reg.scope))
+                  .catch(err => console.warn('SW blocked:', err.message));
+          });
+      }
+    </script>
   </body>
 </html>

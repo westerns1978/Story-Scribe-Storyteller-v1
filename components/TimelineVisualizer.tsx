@@ -51,7 +51,7 @@ const TimelineVisualizer: React.FC<TimelineVisualizerProps> = ({ timeline, image
     const min = years.length > 0 ? Math.min(...years) : 1900;
     const max = years.length > 0 ? Math.max(...years) : new Date().getFullYear();
     const yearSpan = (max - min) || 50;
-    const validImages = images.filter(img => img.success && img.image_url);
+    const validImages = (images || []).filter(img => img && img.success && img.image_url);
 
     const layout = events.map((event, index) => {
       const year = parseInt(String(event.year), 10);
@@ -110,7 +110,8 @@ const TimelineVisualizer: React.FC<TimelineVisualizerProps> = ({ timeline, image
     }
   };
 
-  if (events.length === 0) {
+  // Issue 2 Fix: Safe guard after ALL hooks
+  if (!timeline || timeline.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-64 glass-tier-1 rounded-[2rem] border border-white/5 text-white/20">
         <ClockIcon className="w-12 h-12 mb-4 opacity-20" />
@@ -174,14 +175,12 @@ const TimelineVisualizer: React.FC<TimelineVisualizerProps> = ({ timeline, image
                   className={`transition-all duration-500 ${isHovered ? 'opacity-60' : 'opacity-10'}`} 
                 />
                 
-                {/* Visual Glow Layer */}
                 <circle 
                     r={isHovered ? 18 : 12} 
                     fill={isHovered ? "rgba(212,175,55,0.2)" : "rgba(150,45,45,0.15)"} 
                     className="transition-all duration-300 animate-pulse" 
                 />
                 
-                {/* Core interactive circle */}
                 <circle 
                   r={isHovered ? 9 : 6} 
                   fill={isHovered ? "#D4AF37" : "#000"} 
@@ -206,7 +205,6 @@ const TimelineVisualizer: React.FC<TimelineVisualizerProps> = ({ timeline, image
           })}
         </svg>
 
-        {/* Improved Hover Tooltip */}
         {hoveredEvent && (
           <div 
             className="absolute z-50 pointer-events-none animate-appear"

@@ -1,4 +1,3 @@
-
 import { StoryExtraction, Storyboard, GeneratedImage } from '../types';
 
 const MCP_URL = 'https://ldzzlndsspkyohvzfiiu.supabase.co/functions/v1/mcp-orchestrator';
@@ -47,17 +46,12 @@ class GrokArtisanService {
     }
 
     public determineStyleAndContext(extraction: StoryExtraction): { style: GrokStyle; context: StoryContext } {
-        // Safe extraction of era from timeline
         const years = (extraction.timeline || [])
             .map(e => parseInt(String(e.year), 10))
             .filter(y => !isNaN(y) && y > 1800);
         
         const firstYear = years.length > 0 ? Math.min(...years) : 1950;
-        
-        // Extract mood from themes or emotional journey
         const mood = extraction.emotional_journey?.overall_tone || extraction.themes?.[0] || 'nostalgic';
-        
-        // Extract primary location
         const location = extraction.locations?.[0]?.name || 'Unknown Location';
 
         let style: GrokStyle = 'cinematic';
@@ -80,21 +74,14 @@ class GrokArtisanService {
             era = 'Contemporary';
         }
 
-        // Refine era string if specific decade is found
         if (years.length > 0) {
             const decade = Math.floor(firstYear / 10) * 10;
             era = `${decade}s era`;
         }
 
-        return {
-            style,
-            context: { era, mood, location }
-        };
+        return { style, context: { era, mood, location } };
     }
 
-    /**
-     * Generates a single high-fidelity image via Grok Imagine
-     */
     async generateImage(prompt: string, extraction: StoryExtraction, visualDna?: string): Promise<string> {
         const { style, context } = this.determineStyleAndContext(extraction);
         const result = await this.callOrchestrator('generate_image', {
@@ -110,9 +97,6 @@ class GrokArtisanService {
         throw new Error("Grok failed to visualize the scene.");
     }
 
-    /**
-     * Batch generates images for an entire storyboard with support for specific style/context overrides
-     */
     async generateStoryboardImages(
         storyboard: Storyboard, 
         extraction: StoryExtraction,
@@ -149,19 +133,24 @@ class GrokArtisanService {
             throw new Error(result.error || "Grok Storyboard Node Failed.");
         }
 
+        // URL VALIDATION TELEMETRY
+        if (result.images && result.images.length > 0) {
+            const nullUrls = result.images.filter((img: any) => !img.image_url);
+            if (nullUrls.length > 0) {
+                console.warn(`[Artisan] Grok returned success but ${nullUrls.length} image URLs are missing.`, result);
+            }
+        }
+
         return result.images.map((img: any, idx: number) => ({
             index: idx,
-            success: true,
+            success: !!img.image_url,
             image_url: img.image_url,
-            prompt: storyboard.story_beats[idx].visual_focus,
+            prompt: storyboard.story_beats[idx]?.visual_focus || 'Scene',
             provider: 'Grok Imagine',
-            scene: storyboard.story_beats[idx].beat_title
+            scene: storyboard.story_beats[idx]?.beat_title
         }));
     }
 
-    /**
-     * Generates a cinematic cover for the legacy project
-     */
     async generateCover(storytellerName: string, extraction: StoryExtraction, visualDna?: string): Promise<string> {
         const { style } = this.determineStyleAndContext(extraction);
         const result = await this.callOrchestrator('generate_cover', {

@@ -5,20 +5,23 @@ import InfoIcon from './icons/InfoIcon';
 import XMarkIcon from './icons/XMarkIcon';
 
 const MemoryLaneView: React.FC<{ story: StoryArchiveItem | null }> = ({ story }) => {
+    // 1. Hook Initialization (Unconditional)
     const [currentIndex, setCurrentIndex] = useState(0);
     const [showDirectorial, setShowDirectorial] = useState(false);
 
-    // FIX: Comprehensive storyboard beat recovery with null guard
+    // CRITICAL: Robust memoization with null safety
     const storyBeats = useMemo(() => {
         if (!story) return [];
-        return story.storyboard?.story_beats || story.extraction?.storyboard?.story_beats || [];
+        const beats = story.storyboard?.story_beats || story.extraction?.storyboard?.story_beats || [];
+        return Array.isArray(beats) ? beats : [];
     }, [story]);
 
     const validImages = useMemo(() => {
-        if (!story) return [];
-        return (story.generatedImages || []).filter(img => img.image_url && !img.error);
+        if (!story || !story.generatedImages) return [];
+        return story.generatedImages.filter(img => img && img.image_url && !img.error);
     }, [story]);
 
+    // 2. Lifecycle logic
     useEffect(() => {
         if (storyBeats.length <= 1) return;
         const timer = setTimeout(() => {
@@ -27,23 +30,25 @@ const MemoryLaneView: React.FC<{ story: StoryArchiveItem | null }> = ({ story })
         return () => clearTimeout(timer);
     }, [currentIndex, storyBeats.length]);
     
+    // 3. Early return for UI only after hooks
     if (!story || storyBeats.length === 0) {
         return (
             <div className="h-full w-full flex flex-col items-center justify-center text-center p-12 bg-black/90">
                 <FileSadIcon className="w-20 h-20 text-white/5 mb-8" />
-                <h3 className="text-3xl font-display font-black text-white tracking-tighter">The Director's Cut Awaiting DNA</h3>
+                <h3 className="text-3xl font-display font-black text-white tracking-tighter uppercase">Director's Cut Pending</h3>
                 <p className="text-white/40 mt-3 max-w-md font-serif italic text-lg leading-relaxed">
-                    This cinematic stream requires a multi-beat storyboard. Return to the Studio to initialize agent synthesis.
+                    This cinematic stream requires a multi-beat storyboard. Trigger the Scribe agent to initialize synthesis.
                 </p>
             </div>
         );
     }
     
     const currentBeat = storyBeats[currentIndex] || storyBeats[0];
+    // Attempt to find image by index, fallback to modulo matching
     const image = validImages.find(img => img.index === currentIndex) || validImages[currentIndex % (validImages.length || 1)];
 
     return (
-        <div className="h-full w-full bg-black relative overflow-hidden font-serif group/container">
+        <div className="h-full w-full bg-black relative overflow-hidden font-serif group/container animate-fade-in">
             <style>{`
                 @keyframes kenburns-pan {
                     0% { transform: scale(1.0) translate(0%, 0%); opacity: 0.7; }
@@ -63,7 +68,7 @@ const MemoryLaneView: React.FC<{ story: StoryArchiveItem | null }> = ({ story })
             <div className="absolute inset-0 bg-black"></div>
             
             {image && (
-                <div key={`img-${currentIndex}`} className="absolute inset-0 z-0">
+                <div key={`img-${currentIndex}`} className="absolute inset-0 z-0 animate-fade-in">
                     {image.video_url ? (
                         <video src={image.video_url} autoPlay loop muted playsInline className="w-full h-full object-cover brightness-75" />
                     ) : (
@@ -77,7 +82,7 @@ const MemoryLaneView: React.FC<{ story: StoryArchiveItem | null }> = ({ story })
                 </div>
             )}
 
-            <div key={`text-${currentIndex}`} className="absolute inset-0 z-10 flex flex-col justify-center items-center text-center p-12 lg:p-24">
+            <div key={`text-${currentIndex}`} className="absolute inset-0 z-10 flex flex-col justify-center items-center text-center p-12 lg:p-24 pointer-events-none">
                 <div className="max-w-5xl animate-sequence">
                     <span className="text-gemynd-red font-mono font-bold tracking-[0.6em] uppercase text-[10px] mb-8 block opacity-80">
                         Production Beat {currentIndex + 1} // Archive Master
@@ -96,24 +101,24 @@ const MemoryLaneView: React.FC<{ story: StoryArchiveItem | null }> = ({ story })
                 <div className="p-12 flex flex-col h-full space-y-12">
                     <header className="flex justify-between items-center border-b border-white/10 pb-8">
                         <div>
-                            <h3 className="text-white font-display font-bold text-2xl tracking-tight leading-none">Metadata</h3>
+                            <h3 className="text-white font-display font-bold text-2xl tracking-tight leading-none uppercase">Metadata</h3>
                             <p className="text-[9px] text-gemynd-red font-black uppercase tracking-widest mt-2">Lexington Node Output</p>
                         </div>
-                        <button onClick={() => setShowDirectorial(false)} className="p-3 bg-white/5 rounded-full"><XMarkIcon className="w-5 h-5"/></button>
+                        <button onClick={() => setShowDirectorial(false)} className="p-3 bg-white/5 rounded-full"><XMarkIcon className="w-5 h-5 text-white/60"/></button>
                     </header>
                     
                     <div className="space-y-10">
                         <section className="space-y-4">
                             <h4 className="text-[10px] font-black text-white/30 uppercase tracking-widest">Visual Logic</h4>
                             <p className="text-lg text-white/80 leading-relaxed font-serif italic">
-                                {currentBeat.visual_focus || "Archival cinematic composition."}
+                                {currentBeat?.visual_focus || "Archival cinematic composition."}
                             </p>
                         </section>
 
                         <section className="space-y-4">
                             <h4 className="text-[10px] font-black text-white/30 uppercase tracking-widest">Director's Notes</h4>
                             <p className="text-lg text-white/80 leading-relaxed font-serif italic">
-                                {currentBeat.directors_notes || "Focus on temporal depth and identity."}
+                                {currentBeat?.directors_notes || "Focus on temporal depth and identity."}
                             </p>
                         </section>
                     </div>

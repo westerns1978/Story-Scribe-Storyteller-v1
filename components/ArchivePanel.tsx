@@ -4,7 +4,9 @@ import BookOpenIcon from './icons/BookOpenIcon';
 import TrashIcon from './icons/TrashIcon';
 import MagnifyingGlassIcon from './icons/MagnifyingGlassIcon';
 import SparklesIcon from './icons/SparklesIcon';
+import GalaxyIcon from './icons/GalaxyIcon';
 import ConnectionFinderModal from './ConnectionFinderModal';
+import { LegacyGraph } from './LegacyGraph';
 
 interface ArchivePanelProps {
     stories: StoryArchiveItem[];
@@ -24,6 +26,7 @@ const ArchivePanel: React.FC<ArchivePanelProps> = ({
 }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [isConnectionsOpen, setIsConnectionsOpen] = useState(false);
+    const [isGraphOpen, setIsGraphOpen] = useState(false);
 
     const filteredStories = useMemo(() => {
         if (!Array.isArray(stories)) return [];
@@ -44,6 +47,12 @@ const ArchivePanel: React.FC<ArchivePanelProps> = ({
                     <p className="text-gemynd-terracotta font-serif italic text-sm lg:text-base">Every memory secured across the Lexington nodes.</p>
                 </div>
                 <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+                    <button 
+                        onClick={() => setIsGraphOpen(true)}
+                        className="px-6 py-3 bg-gemynd-mahogany dark:bg-white/5 border border-white/10 text-white font-bold rounded-2xl shadow-lg hover:bg-gemynd-oxblood transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-widest"
+                    >
+                        <GalaxyIcon className="w-4 h-4 text-gemynd-agedGold" /> Family Constellation
+                    </button>
                     <div className="relative flex-1 lg:w-80">
                         <MagnifyingGlassIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gemynd-terracotta/40" />
                         <input
@@ -54,12 +63,6 @@ const ArchivePanel: React.FC<ArchivePanelProps> = ({
                             className="w-full bg-white dark:bg-white/5 border border-gemynd-ink/10 rounded-2xl pl-11 pr-4 py-3 text-sm focus:ring-2 focus:ring-gemynd-terracotta outline-none transition-all shadow-sm"
                         />
                     </div>
-                    <button 
-                        onClick={() => setIsConnectionsOpen(true)}
-                        className="px-6 py-3 bg-gemynd-oxblood text-white font-bold rounded-2xl shadow-lg hover:bg-gemynd-sienna transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-widest"
-                    >
-                        <SparklesIcon className="w-4 h-4" /> Cross-Reference
-                    </button>
                 </div>
             </header>
 
@@ -89,18 +92,10 @@ const ArchivePanel: React.FC<ArchivePanelProps> = ({
                         </button>
                     </div>
                 ))}
-                {filteredStories.length === 0 && (
-                    <div className="col-span-full py-32 text-center opacity-40">
-                        <p className="font-serif italic text-xl">No records match your search...</p>
-                    </div>
-                )}
             </main>
 
-            <ConnectionFinderModal 
-                isOpen={isConnectionsOpen} 
-                onClose={() => setIsConnectionsOpen(false)} 
-                stories={stories} 
-            />
+            <ConnectionFinderModal isOpen={isConnectionsOpen} onClose={() => setIsConnectionsOpen(false)} stories={stories} />
+            <LegacyGraph isOpen={isGraphOpen} onClose={() => setIsGraphOpen(false)} stories={stories} onSelectStory={(s) => { onViewStorybook(s); setIsGraphOpen(false); }} />
         </div>
     );
 };

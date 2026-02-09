@@ -1,25 +1,24 @@
 {
-  "short_name": "Story Scribe",
-  "name": "Gemynd Story Scribe",
-  "description": "Preserve life stories with AI-powered restoration and cinematic oral history.",
-  "icons": [
-    {
-      "src": "https://storage.googleapis.com/gemynd-public/projects/gemynd-portal/gemnyd-branding/Gemynd_Logo_Red_Version.png",
-      "type": "image/png",
-      "sizes": "192x192",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "https://storage.googleapis.com/gemynd-public/projects/gemynd-portal/gemnyd-branding/Gemynd_Logo_Red_Version.png",
-      "type": "image/png",
-      "sizes": "512x512",
-      "purpose": "any maskable"
-    }
-  ],
-  "start_url": "/",
-  "display": "standalone",
-  "orientation": "portrait",
-  "theme_color": "#F9F7F2",
-  "background_color": "#F9F7F2",
-  "categories": ["lifestyle", "family", "education"]
+    "name": "Gemynd Story Scribe — Memory Archive",
+    "short_name": "Story Scribe",
+    "description": "Synthesizing family legacy into high-fidelity digital masterpieces",
+    "start_url": ".",
+    "display": "standalone",
+    "background_color": "#0D0B0A",
+    "theme_color": "#962D2D",
+    "orientation": "any",
+    "icons": [
+        {
+            "src": "https://storage.googleapis.com/gemynd-public/projects/gemynd-portal/gemnyd-branding/Gemynd_Logo_Red_Version.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "https://storage.googleapis.com/gemynd-public/projects/gemynd-portal/gemnyd-branding/Gemynd_Logo_Red_Version.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any"
+        }
+    ]
 }

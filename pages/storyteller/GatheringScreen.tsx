@@ -3,12 +3,11 @@ import MicrophoneIcon from '../../components/icons/MicrophoneIcon';
 import ImageIcon from '../../components/icons/ImageIcon';
 import DocumentTextIcon from '../../components/icons/DocumentTextIcon';
 import SparklesIcon from '../../components/icons/SparklesIcon';
-import XMarkIcon from '../../components/icons/XMarkIcon';
 import TrashIcon from '../../components/icons/TrashIcon';
 import { NeuralAsset } from '../../types';
 import { storageService } from '../../services/storageService';
 import { fileToBase64, extractTextFromPdf } from '../../utils/fileUtils';
-import { analyzeDocumentImage } from '../../services/api';
+import Loader2Icon from '../../components/icons/Loader2Icon';
 
 interface GatheringScreenProps {
   subject: string;
@@ -29,280 +28,190 @@ interface GatheringScreenProps {
 export const GatheringScreen: React.FC<GatheringScreenProps> = ({
   subject, material, onTalk, onPhotos, onText, onRemoveArtifact, onRemoveText, onCreate, onExit
 }) => {
-  const [isPhotoPanelOpen, setIsPhotoPanelOpen] = useState(false);
-  const [isTextPanelOpen, setIsTextPanelOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [importText, setImportText] = useState('');
-
-  const hasEnoughContent = material.transcript.length > 500 || 
-                           material.artifacts.length >= 3 || 
-                           material.importedTexts.some(t => t.content.length > 500);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
     setIsUploading(true);
-    // FIX: Explicitly type 'files' as 'File[]' to resolve TypeScript 'unknown' errors when iterating over FileList.
+    
     const files: File[] = Array.from(e.target.files);
     const newAssets: NeuralAsset[] = [];
     
     for (const file of files) {
       try {
-        let dnaMetadata = { title: file.name, tags: ['gathering_session'] };
-        // If it's a doc/pdf, we could try to extract text here for the session
-        const asset = await storageService.uploadFile(file, dnaMetadata);
-        newAssets.push(asset);
+        if (file.type.startsWith('image/')) {
+          const asset = await storageService.uploadFile(file, { title: file.name, tags: ['gathering'] });
+          newAssets.push(asset);
+        } else if (file.type === 'application/pdf' || file.type === 'text/plain') {
+          let content = '';
+          if (file.type === 'application/pdf') {
+              content = await extractTextFromPdf(file);
+          } else {
+              content = await file.text();
+          }
+          onText(file.name, content);
+        }
       } catch (err) {
-        console.error("Upload failure", err);
+        console.error("[Gathering] node failure:", err);
       }
     }
-    onPhotos(newAssets);
+    
+    if (newAssets.length > 0) onPhotos(newAssets);
     setIsUploading(false);
   };
 
-  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    
-    let content = '';
-    if (file.type === 'application/pdf') {
-      content = await extractTextFromPdf(file);
-    } else if (file.type === 'text/plain') {
-      content = await file.text();
-    } else {
-      alert("Unsupported text format. Please use .txt or .pdf");
-      return;
-    }
-    
-    if (content) {
-      onText(file.name, content);
-      setIsTextPanelOpen(false);
-    }
+  const totalArtifacts = material.artifacts.length;
+  const totalTextNodes = material.importedTexts.length + (material.transcript ? 1 : 0);
+  const totalMaterials = totalArtifacts + totalTextNodes;
+
+  const getTierInfo = () => {
+    if (totalArtifacts >= 8) return { label: 'Heritage Archive', tier: 'Premium', desc: 'Museum-quality cinematic production' };
+    if (totalArtifacts >= 4) return { label: 'Legacy Weave', tier: 'Standard', desc: 'Deep narrative with expanded visual beats' };
+    return { label: 'Quick Memory', tier: 'Quick', desc: 'Beautiful summary of life highlights' };
   };
 
+  const tierInfo = getTierInfo();
+
   return (
-    <div className="h-full w-full bg-gemynd-linen flex flex-col overflow-hidden animate-fade-in relative">
-      {/* Dynamic Background */}
-      <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-gemynd-oxblood/5 blur-[150px] rounded-full pointer-events-none" />
+    <div className="h-full w-full bg-[#0D0B0A] flex flex-col overflow-hidden animate-fade-in relative text-white selection:bg-amber-500">
+      <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-gemynd-oxblood/10 blur-[150px] rounded-full pointer-events-none" />
       
-      <header className="p-6 lg:p-8 flex justify-between items-center z-20">
+      <header className="p-8 lg:p-12 flex justify-between items-center z-20">
         <div className="flex items-center gap-6">
-          <img src="https://storage.googleapis.com/gemynd-public/projects/gemynd-portal/gemnyd-branding/Gemynd_Logo_Red_Version.png" className="w-10" alt="Logo" />
-          <div className="h-10 w-px bg-gemynd-softPeach hidden sm:block" />
+          <img src="https://storage.googleapis.com/gemynd-public/projects/gemynd-portal/gemnyd-branding/Gemynd_Logo_Red_Version.png" className="w-10 h-10" alt="Logo" />
+          <div className="h-10 w-px bg-white/10 hidden sm:block" />
           <div>
-            <h1 className="text-xl lg:text-2xl font-display font-black text-gemynd-ink">Remembering {subject}</h1>
-            <p className="text-[10px] text-gemynd-oxblood font-black uppercase tracking-widest">Collaborative Gathering Node</p>
+            <h1 className="text-2xl font-display font-black tracking-tight">Memory Ingestion</h1>
+            <p className="text-[10px] text-gemynd-agedGold font-black uppercase tracking-[0.4em] mt-1">Archive Subject: {subject}</p>
           </div>
         </div>
-        <div className="flex items-center gap-4">
-          <button className="text-[10px] font-black uppercase tracking-widest text-gemynd-ink/30 hover:text-gemynd-ink">Help</button>
-          <button onClick={onExit} className="px-5 py-2 bg-white border border-gemynd-ink/10 rounded-full text-[10px] font-black uppercase tracking-widest text-gemynd-ink hover:bg-gemynd-softPeach transition-colors">Exit</button>
-        </div>
+        <button onClick={onExit} className="px-8 py-3 bg-white/5 border border-white/10 rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-white/10 transition-all haptic-tap">Cancel</button>
       </header>
 
-      <main className="flex-1 overflow-y-auto px-6 lg:px-20 py-10 scroll-viewport">
-        <div className="max-w-6xl mx-auto space-y-16">
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <InputCard 
-              title="Talk with Connie"
-              desc="Just speak naturally and Connie will guide you."
-              icon={<MicrophoneIcon className="w-8 h-8" />}
+      <main className="flex-1 overflow-y-auto px-6 lg:px-20 py-4 scroll-viewport">
+        <div className="max-w-3xl mx-auto space-y-16">
+          <div className="space-y-8">
+            <div className="text-center space-y-3">
+              <h2 className="text-5xl lg:text-7xl font-display font-black tracking-tighter">Add Memories</h2>
+              <p className="text-white/40 font-serif italic text-xl">Deposit photos or documents to begin the weave.</p>
+            </div>
+            
+            <label className="relative group cursor-pointer block haptic-tap">
+              <input type="file" multiple className="hidden" onChange={handleFileUpload} />
+              <div className="aspect-[21/9] border-2 border-dashed border-white/10 bg-white/[0.03] rounded-[4rem] flex flex-col items-center justify-center p-12 transition-all group-hover:border-gemynd-oxblood/40 group-hover:bg-white/[0.05] shadow-2xl">
+                {isUploading ? (
+                  <div className="flex flex-col items-center gap-6">
+                    <Loader2Icon className="w-16 h-16 text-gemynd-oxblood" />
+                    <p className="text-[10px] font-black uppercase tracking-[0.5em] text-gemynd-oxblood animate-pulse">Uplinking Data...</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="w-24 h-24 bg-white/5 rounded-full flex items-center justify-center mb-8 group-hover:scale-110 transition-all duration-700 shadow-xl border border-white/5">
+                      <ImageIcon className="w-10 h-10 text-white/30" />
+                    </div>
+                    <p className="text-2xl font-bold tracking-tight">Drop photos or tap to upload</p>
+                    <p className="text-[10px] text-white/20 uppercase tracking-[0.3em] mt-4 font-black">JPG, PNG, PDF supported</p>
+                  </>
+                )}
+              </div>
+            </label>
+
+            <div className="flex items-center gap-8 py-6">
+              <div className="flex-1 h-px bg-white/10" />
+              <span className="text-[10px] font-black text-white/20 uppercase tracking-[0.6em]">or</span>
+              <div className="flex-1 h-px bg-white/10" />
+            </div>
+
+            <button 
               onClick={onTalk}
-              accent="text-rose-600 bg-rose-50 border-rose-100"
-            />
-            <InputCard 
-              title="Share Photos"
-              desc="Upload photos, letters, or scanned documents."
-              icon={<ImageIcon className="w-8 h-8" />}
-              onClick={() => setIsPhotoPanelOpen(true)}
-              accent="text-amber-600 bg-amber-50 border-amber-100"
-            />
-            <InputCard 
-              title="Paste or Import"
-              desc="Already have text? Paste or import a file."
-              icon={<DocumentTextIcon className="w-8 h-8" />}
-              onClick={() => setIsTextPanelOpen(true)}
-              accent="text-blue-600 bg-blue-50 border-blue-100"
-            />
+              className="w-full py-12 bg-white/5 hover:bg-white/[0.08] border border-white/10 rounded-[3rem] flex items-center justify-center gap-8 group transition-all haptic-tap shadow-xl"
+            >
+              <div className="w-16 h-16 bg-gemynd-oxblood/20 text-gemynd-oxblood rounded-full flex items-center justify-center group-hover:scale-110 transition-all duration-500 shadow-lg">
+                <MicrophoneIcon className="w-8 h-8" />
+              </div>
+              <div className="text-left">
+                <p className="text-2xl font-bold tracking-tight">Talk with Connie</p>
+                <p className="text-sm text-white/40 font-serif italic mt-1 leading-relaxed">Speak naturally, she'll capture the story for you.</p>
+              </div>
+            </button>
           </div>
 
-          {/* Session Tray */}
-          <section className="space-y-6">
-            <div className="flex items-center gap-4">
-                <h2 className="text-[10px] font-black uppercase tracking-[0.4em] text-gemynd-ink/40">Gathered Material</h2>
-                <div className="flex-1 h-px bg-gemynd-softPeach" />
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-6">
-              {/* Connie Status */}
-              {material.transcript && (
-                <div className="col-span-2 bg-white p-6 rounded-[2rem] border border-gemynd-softPeach shadow-sm flex items-center gap-4 group">
-                    <div className="w-12 h-12 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center">
-                        <MicrophoneIcon className="w-6 h-6" />
+          {totalMaterials > 0 && (
+            <section className="bg-white/[0.02] border border-white/5 p-12 rounded-[4rem] space-y-10 animate-appear shadow-2xl">
+              <div className="flex justify-between items-end border-b border-white/5 pb-8">
+                 <div>
+                    <h3 className="text-[10px] font-black uppercase tracking-[0.5em] text-white/30 mb-2">Vault Inventory</h3>
+                    <p className="text-2xl font-display font-bold text-white tracking-tight">{totalMaterials} Item{totalMaterials !== 1 ? 's' : ''} Gathered</p>
+                 </div>
+                 <div className="text-right">
+                    <div className="flex items-center gap-3 justify-end mb-2">
+                      <SparklesIcon className="w-5 h-5 text-gemynd-agedGold" />
+                      <span className="text-[10px] font-black uppercase text-gemynd-agedGold tracking-[0.2em]">{tierInfo.label} Level</span>
                     </div>
-                    <div className="flex-1 min-w-0">
-                        <p className="text-xs font-bold text-gemynd-ink truncate">Connie Conversation</p>
-                        <p className="text-[10px] text-gemynd-ink/40 font-medium uppercase tracking-widest mt-0.5">Transcript Loaded</p>
-                    </div>
-                </div>
-              )}
+                    <p className="text-[10px] text-white/30 uppercase tracking-widest font-medium">{tierInfo.desc}</p>
+                 </div>
+              </div>
 
-              {/* Photos */}
-              {material.artifacts.map((asset) => (
-                <div key={asset.id} className="aspect-square bg-white rounded-[2rem] border border-gemynd-softPeach shadow-sm group relative overflow-hidden">
-                    <img src={asset.public_url} className="w-full h-full object-cover grayscale-[0.3] group-hover:grayscale-0 transition-all" alt="Artifact" />
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
+                {material.transcript && (
+                  <div className="aspect-square bg-rose-500/5 border border-rose-500/20 p-6 rounded-[2rem] flex flex-col justify-between items-start group relative transition-all hover:bg-rose-500/10">
+                    <MicrophoneIcon className="w-6 h-6 text-rose-500" />
+                    <div>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-rose-500 opacity-60">Voice Session</span>
+                        <p className="text-[9px] text-white/20 mt-1 uppercase font-bold">Synchronised</p>
+                    </div>
+                  </div>
+                )}
+                {material.artifacts.map((a) => (
+                  <div key={a.id} className="aspect-square rounded-[2rem] overflow-hidden border border-white/10 relative group shadow-lg">
+                    <img src={a.public_url} className="w-full h-full object-cover grayscale-[0.2] group-hover:grayscale-0 transition-all duration-700" alt="Artifact" />
                     <button 
-                      onClick={() => onRemoveArtifact(asset.id)}
-                      className="absolute top-2 right-2 p-1.5 bg-black/40 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={() => onRemoveArtifact(a.id)}
+                        className="absolute top-4 right-4 p-2 bg-black/60 hover:bg-gemynd-oxblood rounded-full opacity-0 group-hover:opacity-100 transition-all transform scale-75 group-hover:scale-100"
                     >
-                      <TrashIcon className="w-3 h-3" />
+                        <TrashIcon className="w-4 h-4 text-white"/>
                     </button>
-                </div>
-              ))}
-
-              {/* Imported Texts */}
-              {material.importedTexts.map((text, idx) => (
-                <div key={idx} className="col-span-2 bg-white p-6 rounded-[2rem] border border-gemynd-softPeach shadow-sm flex items-center gap-4 group">
-                    <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center">
-                        <DocumentTextIcon className="w-6 h-6" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                        <p className="text-xs font-bold text-gemynd-ink truncate">{text.name}</p>
-                        <p className="text-[10px] text-gemynd-ink/40 font-medium uppercase tracking-widest mt-0.5">Imported Node</p>
+                    {a.id.startsWith('restored-') && (
+                        <div className="absolute bottom-4 left-4 px-3 py-1 bg-amber-500 text-black text-[8px] font-black rounded-full uppercase tracking-widest shadow-lg">Restored</div>
+                    )}
+                  </div>
+                ))}
+                {material.importedTexts.map((t, i) => (
+                  <div key={i} className="aspect-square bg-blue-500/5 border border-blue-500/20 p-6 rounded-[2rem] flex flex-col justify-between items-start group relative transition-all hover:bg-blue-500/10">
+                    <DocumentTextIcon className="w-6 h-6 text-blue-500" />
+                    <div className="space-y-1 w-full">
+                        <p className="text-[10px] font-black text-white leading-tight truncate uppercase tracking-tighter">{t.name}</p>
+                        <span className="text-[8px] uppercase font-black text-blue-400/60 tracking-widest">Historical Record</span>
                     </div>
                     <button 
-                      onClick={() => onRemoveText(idx)}
-                      className="text-gemynd-ink/20 hover:text-gemynd-oxblood transition-colors"
+                        onClick={() => onRemoveText(i)}
+                        className="absolute top-4 right-4 p-2 bg-black/40 hover:bg-gemynd-oxblood rounded-full opacity-0 group-hover:opacity-100 transition-all transform scale-75 group-hover:scale-100"
                     >
-                      <TrashIcon className="w-4 h-4" />
+                        <TrashIcon className="w-4 h-4 text-white"/>
                     </button>
-                </div>
-              ))}
-
-              {/* Empty State */}
-              {!material.transcript && material.artifacts.length === 0 && material.importedTexts.length === 0 && (
-                <div className="col-span-full py-20 text-center">
-                  <p className="text-lg font-serif italic text-gemynd-ink/20 tracking-wide">The archive is currently empty. Choose a path above to contribute.</p>
-                </div>
-              )}
-            </div>
-          </section>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
         </div>
       </main>
 
-      {/* Persistent Footer Action */}
-      <footer className="p-8 lg:p-12 bg-white/50 backdrop-blur-xl border-t border-gemynd-softPeach z-30 flex justify-center">
-        <div className="max-w-md w-full text-center space-y-4">
+      <footer className="p-10 lg:p-14 bg-[#050404] border-t border-white/5 z-30 shadow-[0_-20px_40px_rgba(0,0,0,0.4)]">
+        <div className="max-w-md mx-auto text-center space-y-8">
           <button 
             onClick={onCreate}
-            disabled={!hasEnoughContent}
-            className="w-full py-6 bg-gemynd-oxblood text-white font-black rounded-full shadow-2xl hover:scale-[1.02] active:scale-95 transition-all text-xs uppercase tracking-[0.4em] disabled:opacity-20 disabled:grayscale flex items-center justify-center gap-4"
+            disabled={totalMaterials === 0}
+            className="w-full py-8 bg-gemynd-oxblood text-white font-black rounded-full shadow-[0_20px_60px_rgba(168,45,45,0.4)] hover:bg-gemynd-red hover:scale-[1.02] active:scale-95 transition-all text-xs uppercase tracking-[0.6em] disabled:opacity-10 disabled:grayscale flex items-center justify-center gap-5 border border-white/10"
           >
             <SparklesIcon className="w-5 h-5" />
             Create the Story
           </button>
-          <p className="text-[9px] font-bold text-gemynd-ink/30 uppercase tracking-[0.2em]">
-            {hasEnoughContent ? "Ready for neural synthesis" : "Add more material to unlock the story weave"}
-          </p>
+          <div className="space-y-2 opacity-40">
+             <p className="text-[9px] text-white/50 uppercase tracking-[0.4em] font-black">Neural Synthesis Engine Ready</p>
+          </div>
         </div>
       </footer>
-
-      {/* Photo Ingestion Modal */}
-      {isPhotoPanelOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-gemynd-mahogany/40 backdrop-blur-sm" onClick={() => setIsPhotoPanelOpen(false)} />
-          <div className="bg-white w-full max-w-xl rounded-[3rem] shadow-[0_40px_100px_rgba(0,0,0,0.2)] p-10 relative z-10 animate-slide-up">
-            <button onClick={() => setIsPhotoPanelOpen(false)} className="absolute top-8 right-8 text-gemynd-ink/20 hover:text-gemynd-oxblood"><XMarkIcon className="w-8 h-8"/></button>
-            <header className="mb-10">
-                <h3 className="text-3xl font-display font-black text-gemynd-ink">Share Photos</h3>
-                <p className="text-sm font-serif italic text-gemynd-ink/50 mt-2">Visual memories add depth to the legacy weave.</p>
-            </header>
-
-            <label className="w-full aspect-[16/10] border-2 border-dashed border-gemynd-oxblood/10 bg-gemynd-linen rounded-[2.5rem] flex flex-col items-center justify-center cursor-pointer hover:bg-gemynd-oxblood/5 transition-all group mb-8">
-              <input type="file" multiple accept="image/*,.pdf,.heic" className="hidden" onChange={handleFileUpload} />
-              {isUploading ? (
-                <div className="flex flex-col items-center gap-4">
-                    <div className="w-10 h-10 border-2 border-gemynd-oxblood border-t-transparent rounded-full animate-spin" />
-                    <p className="text-[10px] font-black uppercase tracking-widest text-gemynd-oxblood">Uploading Artifacts...</p>
-                </div>
-              ) : (
-                <>
-                  <ImageIcon className="w-12 h-12 text-gemynd-oxblood/20 group-hover:scale-110 transition-transform mb-4" />
-                  <p className="text-sm font-bold text-gemynd-ink/60">Drop files or tap to browse</p>
-                  <p className="text-[9px] font-black uppercase tracking-widest text-gemynd-ink/30 mt-2">Supports JPG, PNG, PDF, HEIC</p>
-                </>
-              )}
-            </label>
-
-            <div className="flex items-center gap-4 mb-10">
-                <div className="h-px flex-1 bg-gemynd-softPeach" />
-                <span className="text-[9px] font-black text-gemynd-ink/20 uppercase tracking-widest">Or Use Camera</span>
-                <div className="h-px flex-1 bg-gemynd-softPeach" />
-            </div>
-
-            <button className="w-full py-5 bg-white border-2 border-gemynd-oxblood/10 rounded-2xl flex items-center justify-center gap-4 hover:bg-gemynd-linen transition-colors group">
-                <div className="w-10 h-10 bg-gemynd-oxblood/5 rounded-xl flex items-center justify-center text-gemynd-oxblood group-hover:scale-110 transition-transform">
-                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                </div>
-                <span className="text-xs font-black uppercase tracking-widest text-gemynd-ink">Take Photo of Print</span>
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Text Modal */}
-      {isTextPanelOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-gemynd-mahogany/40 backdrop-blur-sm" onClick={() => setIsTextPanelOpen(false)} />
-          <div className="bg-white w-full max-w-xl rounded-[3rem] shadow-[0_40px_100px_rgba(0,0,0,0.2)] p-10 relative z-10 animate-slide-up">
-            <button onClick={() => setIsTextPanelOpen(false)} className="absolute top-8 right-8 text-gemynd-ink/20 hover:text-gemynd-oxblood"><XMarkIcon className="w-8 h-8"/></button>
-            <header className="mb-10">
-                <h3 className="text-3xl font-display font-black text-gemynd-ink">Paste or Import</h3>
-                <p className="text-sm font-serif italic text-gemynd-ink/50 mt-2">Add written notes, journals, or family records.</p>
-            </header>
-
-            <textarea 
-              value={importText}
-              onChange={(e) => setImportText(e.target.value)}
-              className="w-full h-48 bg-gemynd-linen rounded-[2rem] p-8 font-serif text-lg italic outline-none border border-gemynd-oxblood/5 focus:border-gemynd-oxblood/20 transition-all resize-none placeholder:text-gemynd-ink/10"
-              placeholder="Paste text here..."
-            />
-
-            <div className="flex gap-4 mt-8">
-              <label className="flex-1 py-5 bg-white border-2 border-gemynd-oxblood/10 rounded-2xl flex items-center justify-center gap-4 hover:bg-gemynd-linen transition-colors cursor-pointer group">
-                  <input type="file" accept=".txt,.pdf" className="hidden" onChange={handleImportFile} />
-                  <DocumentTextIcon className="w-5 h-5 text-gemynd-oxblood/40 group-hover:scale-110 transition-transform" />
-                  <span className="text-xs font-black uppercase tracking-widest text-gemynd-ink">Import File</span>
-              </label>
-              <button 
-                onClick={() => { if(importText.trim()) { onText('Pasted Text', importText); setIsTextPanelOpen(false); setImportText(''); } }}
-                disabled={!importText.trim()}
-                className="flex-[2] py-5 bg-gemynd-oxblood text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl disabled:opacity-30 transition-all"
-              >
-                Add to Session
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
-
-const InputCard = ({ title, desc, icon, onClick, accent }: any) => (
-  <button 
-    onClick={onClick}
-    className={`p-10 rounded-[3rem] border shadow-sm hover:shadow-xl transition-all duration-500 text-left group flex flex-col justify-between min-h-[280px] bg-white ${accent} hover:-translate-y-2`}
-  >
-    <div className="w-16 h-16 rounded-2xl bg-white border border-inherit flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
-        {icon}
-    </div>
-    <div className="space-y-3">
-        <h3 className="text-2xl font-display font-black tracking-tight text-gemynd-ink">{title}</h3>
-        <p className="text-sm font-serif italic text-gemynd-ink/50 leading-relaxed">{desc}</p>
-    </div>
-    <div className="mt-6 flex items-center gap-2 text-[9px] font-black uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">
-        Open Component <span className="text-lg">→</span>
-    </div>
-  </button>
-);

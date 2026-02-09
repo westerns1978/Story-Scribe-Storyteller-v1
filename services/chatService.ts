@@ -1,4 +1,3 @@
-
 import { getAiClient } from './api';
 
 // Define the structure for chat history messages
@@ -9,7 +8,7 @@ interface ChatHistoryMessage {
 
 class ChatService {
   /**
-   * Sends a chat message entirely Client-Side using Gemini 3.0 Flash.
+   * Sends a chat message entirely Client-Side using Gemini 2.0 Flash.
    * This removes the dependency on the backend for basic chat, ensuring Connie works.
    * @param message The user's current message.
    * @param history The previous conversation history.
@@ -19,8 +18,8 @@ class ChatService {
       const ai = getAiClient();
       
       const chat = ai.chats.create({
-          // FIX: Updated to 'gemini-3-flash-preview' as per current naming conventions for basic text tasks
-          model: 'gemini-3-flash-preview',
+          // Standardized to gemini-2.0-flash
+          model: 'gemini-2.0-flash',
           history: history.map(h => ({
               role: h.role,
               parts: h.parts

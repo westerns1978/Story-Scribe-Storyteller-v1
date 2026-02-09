@@ -3,6 +3,8 @@ import {
   GeneratedImage,
   StoryExtraction,
   Storyboard,
+  ActiveStory,
+  Artifact
 } from '../types';
 import { GoogleGenAI, Modality } from "@google/genai";
 import { grokArtisan, GrokStyle } from './grokArtisanService';
@@ -11,11 +13,13 @@ import { buildStructuredPrompt, VisualStyle } from '../utils/visualPromptBuilder
 export { grokArtisan };
 
 export const getAiClient = () => {
+    // ALWAYS use process.env.API_KEY as per mandatory guidelines
     return new GoogleGenAI({ apiKey: process.env.API_KEY });
 };
 
 const MODELS = {
-    WRITER: 'gemini-3-pro-preview', 
+    // Standardized to valid model names for early 2025 stability
+    WRITER: 'gemini-3-flash-preview', 
     IMAGE: 'gemini-2.5-flash-image',
     VISION: 'gemini-3-flash-preview',
     SEARCH: 'gemini-3-flash-preview',
@@ -30,10 +34,31 @@ const cleanJson = (text: string | undefined) => {
     return cleaned;
 };
 
+/**
+ * Real-time translation for Multilingual Heritage Nodes
+ */
+export async function translateContent(text: string, targetLanguage: string): Promise<string> {
+    try {
+        const ai = getAiClient();
+        const res = await ai.models.generateContent({
+            model: MODELS.WRITER,
+            contents: `Translate the following life story segment into ${targetLanguage}. 
+            Maintain the emotional depth, poetic style, and first-person perspective. 
+            Ensure archival accuracy of names and dates.
+            TEXT: "${text}"`,
+            config: { thinkingConfig: { thinkingBudget: 0 } }
+        });
+        return res.text || text;
+    } catch (error) {
+        console.error('[Translation] Node failed:', error);
+        return text;
+    }
+}
+
 export async function healthCheck(): Promise<any> {
     return { 
         status: 'healthy', 
-        version: '1.2.10', 
+        version: '1.2.14', 
         gemini: 'active', 
         supabase: 'connected',
         artisan: 'grok-imagine'
@@ -41,12 +66,17 @@ export async function healthCheck(): Promise<any> {
 }
 
 export async function diarize(transcript: string): Promise<string> {
-    const ai = getAiClient();
-    const res = await ai.models.generateContent({
-        model: MODELS.WRITER,
-        contents: `Diarize the following transcript. Identify speakers and format as speaker labels: \n\n${transcript}`
-    });
-    return res.text || transcript;
+    try {
+        const ai = getAiClient();
+        const res = await ai.models.generateContent({
+            model: MODELS.WRITER,
+            contents: `Diarize the following transcript. Identify speakers and format as speaker labels: \n\n${transcript}`
+        });
+        return res.text || transcript;
+    } catch (error: any) {
+        console.error('[Diarize] Error:', error.message);
+        return transcript;
+    }
 }
 
 /**
@@ -73,12 +103,13 @@ export async function generateImagesForStoryboard(
     const targetStyle = grokStyleMap[style] || 'cinematic';
 
     try {
-        // Grok service handles batching and parallelization internally via the orchestrator
-        return await grokArtisan.generateStoryboardImages(storyboard, extraction, { 
+        const results = await grokArtisan.generateStoryboardImages(storyboard, extraction, { 
             style: targetStyle 
         });
-    } catch (err) {
-        console.error("[Artisan] Grok Synthesis Failed. Check console for Edge Function telemetry.", err);
+        console.log(`[Artisan] Grok returned ${results.length} images.`);
+        return results;
+    } catch (err: any) {
+        console.error("[Artisan] Grok Synthesis REJECTION:", err.message || err);
         throw err;
     }
 }
@@ -91,107 +122,149 @@ export async function generateStoryWithMagic(
     artifacts: { data: string, mimeType: string, extractedText?: string }[] = [],
     visualStyle: string = 'Cinematic (Non-Linear)'
 ): Promise<ExtractResponse> {
-    const ai = getAiClient();
-    
-    // --- STEP 1: AGENT SCRIBE (Narrative & Intelligence) ---
-    if (onProgress) onProgress('agent_scribe');
-    
-    const artifactContextText = artifacts.map(a => a.extractedText).filter(Boolean).join('\n---\n');
-    const visualParts = artifacts.filter(a => a.mimeType.startsWith('image/')).slice(0, 5).map(art => ({ inlineData: { data: art.data, mimeType: art.mimeType } }));
-
-    const scribeRes = await ai.models.generateContent({
-        model: MODELS.WRITER,
-        contents: {
-            parts: [
-                ...visualParts,
-                { text: `Act as Agent Scribe. Create an Immersive Cinematic Legacy Archive for ${storytellerName}.
-                SOURCE MATERIALS:
-                TRANSCRIPT: "${transcript}"
-                HISTORICAL_RECORDS_TEXT: "${artifactContextText}"
-                INSTRUCTIONS:
-                1. Narrative: A 1000-word masterpiece weaving verbal memories and historical document facts.
-                2. Historical Anchoring: Research EVERY year/location mentioned. Populate "historical_context".
-                3. Evocative Detail Synthesis: Populate "details" field with sensory immersion.
-                4. For the Timeline: Include an "evocative_narration" for EVERY event. This is a 2-sentence atmospheric snippet written in the first person ("I remember..."), capturing the specific sights, sounds, and texture of that era and location.
-                5. Output high-fidelity JSON.
-                STYLE: ${narrativeStyle}
-                OUTPUT_JSON_SCHEMA:
-                {
-                  "narrative": "string",
-                  "summary": "string",
-                  "timeline": [{"year": "string", "event": "string", "significance": "string", "historical_context": "string", "details": "string", "evocative_narration": "string"}],
-                  "locations": [{"name": "string", "type": "string"}],
-                  "themes": ["string"],
-                  "life_lessons": ["string"],
-                  "artifacts": [{"name": "string", "type": "string", "description": "string", "era": "string", "image_prompt": "string"}],
-                  "storyboard": {"story_beats": [{"beat_title": "string", "narrative_chunk": "string", "visual_focus": "string", "directors_notes": "string"}]}
-                }` }
-            ]
-        },
-        config: { responseMimeType: "application/json", tools: [{ googleSearch: {} }] }
-    });
-    
-    let scribeData;
     try {
-        scribeData = JSON.parse(cleanJson(scribeRes.text));
-    } catch (e) {
-        console.error("[Scribe] JSON Parsing Failed. Attempting recovery...");
-        scribeData = { 
-            narrative: scribeRes.text?.substring(0, 500), 
-            summary: "Synthesis partially completed.",
-            timeline: [], 
-            storyboard: { story_beats: [] } 
+        const ai = getAiClient();
+        
+        // --- STEP 1: AGENT SCRIBE (Narrative & Intelligence) ---
+        if (onProgress) onProgress('agent_scribe');
+        
+        const artifactContextText = artifacts.map(a => a.extractedText).filter(Boolean).join('\n---\n');
+        
+        // Construct visual input parts for Scribe Agent
+        const visualParts = artifacts
+          .filter(a => a.mimeType.startsWith('image/'))
+          .slice(0, 5)
+          .map(art => {
+            if (!art.data) return null;
+            return { inlineData: { data: art.data, mimeType: art.mimeType } };
+          })
+          .filter(Boolean) as any[];
+
+        console.log('[Cascade] Initializing Scribe with model:', MODELS.WRITER);
+
+        const scribeRes = await ai.models.generateContent({
+            model: MODELS.WRITER,
+            contents: {
+                parts: [
+                    ...visualParts,
+                    { text: `Act as Agent Scribe. Create an Immersive Cinematic Legacy Archive for ${storytellerName}.
+                    SOURCE MATERIALS:
+                    TRANSCRIPT: "${transcript}"
+                    HISTORICAL_RECORDS_TEXT: "${artifactContextText}"
+                    INSTRUCTIONS:
+                    1. Narrative: A 1000-word masterpiece weaving verbal memories and historical document facts.
+                    2. Historical Anchoring: Research EVERY year/location mentioned. Populate "historical_context".
+                    3. Evocative Detail Synthesis: Populate "details" field with sensory immersion.
+                    4. For the Timeline: Include an "evocative_narration" for EVERY event. This is a 2-sentence atmospheric snippet written in the first person ("I remember..."), capturing the specific sights, sounds, and texture of that era and location.
+                    5. Output high-fidelity JSON.
+                    STYLE: ${narrativeStyle}
+                    OUTPUT_JSON_SCHEMA:
+                    {
+                      "narrative": "string",
+                      "summary": "string",
+                      "timeline": [{"year": "string", "event": "string", "significance": "string", "historical_context": "string", "details": "string", "evocative_narration": "string"}],
+                      "locations": [{"name": "string", "type": "string"}],
+                      "themes": ["string"],
+                      "life_lessons": ["string"],
+                      "artifacts": [{"name": "string", "type": "string", "description": "string", "era": "string", "image_prompt": "string"}],
+                      "storyboard": {"story_beats": [{"beat_title": "string", "narrative_chunk": "string", "visual_focus": "string", "directors_notes": "string"}]}
+                    }` }
+                ]
+            },
+            config: { responseMimeType: "application/json" } 
+        });
+        
+        let scribeData;
+        try {
+            scribeData = JSON.parse(cleanJson(scribeRes.text));
+        } catch (e) {
+            console.error("[Scribe] JSON Parsing Failed. Attempting recovery...");
+            scribeData = { 
+                narrative: scribeRes.text?.substring(0, 500), 
+                summary: "Synthesis partially completed.",
+                timeline: [], 
+                storyboard: { story_beats: [] },
+                artifacts: []
+            };
+        }
+
+        // --- STEP 2: AGENT CARTOGRAPHER ---
+        if (onProgress) onProgress('agent_cartographer');
+        
+        // --- STEP 3: AGENT ILLUSTRATOR (Grok Imagine Path) ---
+        if (onProgress) onProgress('agent_illustrator');
+        let finalImages: GeneratedImage[] = [];
+        try {
+            finalImages = await generateImagesForStoryboard(scribeData.storyboard, scribeData as any, visualStyle);
+            
+            // Fix Heirlooms: Generate images for extracted artifacts
+            if (scribeData.artifacts && scribeData.artifacts.length > 0) {
+              console.log(`[Artisan] Synthesizing artifact DNA for ${scribeData.artifacts.length} heirlooms...`);
+              const artifactImages = await Promise.all(
+                scribeData.artifacts.slice(0, 4).map(async (artifact: Artifact) => {
+                  try {
+                    const url = await grokArtisan.generateImage(
+                      artifact.image_prompt || `A vintage archival photograph of ${artifact.name}, ${artifact.description}`, 
+                      scribeData as any, 
+                      'archival, studio lighting, isolated on neutral background'
+                    );
+                    return { ...artifact, image_url: url };
+                  } catch (e) {
+                    console.warn(`[Artisan] Artifact node skipped: ${artifact.name}`, e);
+                    return artifact;
+                  }
+                })
+              );
+              scribeData.artifacts = artifactImages;
+            }
+        } catch (imgErr: any) {
+            console.warn("[Illustrator] Grok node failed. Falling back to empty slots.", imgErr.message);
+            finalImages = (scribeData.storyboard?.story_beats || []).map((beat: any, i: number) => ({
+                index: i, success: false, image_url: '', prompt: beat.visual_focus, error: 'Synthesis Interrupted'
+            }));
+        }
+
+        // --- STEP 4: AGENT DIRECTOR ---
+        if (onProgress) onProgress('agent_director');
+
+        const response: ExtractResponse = {
+            session_id: `gemynd-${Date.now()}`, 
+            narrative: scribeData.narrative,
+            extraction: { ...scribeData, storyteller: { name: storytellerName } },
+            images: finalImages,
+            storyboard: scribeData.storyboard,
+            artifacts: scribeData.artifacts || []
         };
+
+        // Save to Neural Vault for persistence and GET THE REAL UUID
+        try {
+            await saveStoryToVault(storytellerName, transcript, response.narrative, response.extraction, response.storyboard, response.images);
+        } catch (vErr) {
+            console.warn("[Vault] Auto-save skipped during cascade", vErr);
+        }
+
+        return response;
+    } catch (error: any) {
+        console.error('[Cascade] Error:', error);
+        throw error;
     }
-
-    // --- STEP 2: AGENT CARTOGRAPHER ---
-    if (onProgress) onProgress('agent_cartographer');
-    
-    // --- STEP 3: AGENT ILLUSTRATOR (Grok Imagine Path) ---
-    if (onProgress) onProgress('agent_illustrator');
-    let finalImages: GeneratedImage[] = [];
-    try {
-        finalImages = await generateImagesForStoryboard(scribeData.storyboard, scribeData as any, visualStyle);
-    } catch (imgErr) {
-        console.warn("[Illustrator] Grok node timed out or failed. Returning narrative only.", imgErr);
-        // We still return the story, but with empty image slots to allow manual retry in Studio
-        finalImages = (scribeData.storyboard?.story_beats || []).map((_, i) => ({
-            index: i, success: false, image_url: '', prompt: 'Generation Failed'
-        }));
-    }
-
-    // --- STEP 4: AGENT DIRECTOR ---
-    if (onProgress) onProgress('agent_director');
-
-    const response: ExtractResponse = {
-        session_id: `gemynd-${Date.now()}`,
-        narrative: scribeData.narrative,
-        extraction: { ...scribeData, storyteller: { name: storytellerName } },
-        images: finalImages,
-        storyboard: scribeData.storyboard,
-        artifacts: scribeData.artifacts || []
-    };
-
-    // Save to Neural Vault for persistence
-    try {
-        await saveStoryToVault(storytellerName, transcript, response.narrative, response.extraction, response.storyboard, response.images);
-    } catch (vErr) {
-        console.warn("[Vault] Auto-save skipped during cascade", vErr);
-    }
-
-    return response;
 }
 
 export async function generateEventNarrationOnDemand(eventTitle: string, significance: string, year: string): Promise<string> {
-    const ai = getAiClient();
-    const res = await ai.models.generateContent({
-        model: MODELS.WRITER,
-        contents: `Create a brief, evocative first-person narration for this life event: "${eventTitle}" in the year ${year}. 
-        CONTEXT: ${significance}.
-        REQUIREMENT: Two sentences. Sensory, atmospheric, and capture the 'vibe' of that era.`,
-        config: { thinkingConfig: { thinkingBudget: 0 } }
-    });
-    return res.text || "";
+    try {
+        const ai = getAiClient();
+        const res = await ai.models.generateContent({
+            model: MODELS.WRITER,
+            contents: `Create a brief, evocative first-person narration for this life event: "${eventTitle}" in the year ${year}. 
+            CONTEXT: ${significance}.
+            REQUIREMENT: Two sentences. Sensory, atmospheric, and capture the 'vibe' of that era.`,
+            config: { thinkingConfig: { thinkingBudget: 0 } }
+        });
+        return res.text || "";
+    } catch (error) {
+        console.error('[EventNarration] Error:', error);
+        return "";
+    }
 }
 
 export async function generateLivingPortrait(base64Image: string, prompt: string): Promise<string> {
@@ -360,6 +433,11 @@ export async function extractTextFromDocument(base64: string, mimeType: string):
 // NEURAL VAULT PERSISTENCE - Added for Supabase storage
 // ═══════════════════════════════════════════════════════════════
 
+const SUPABASE_CONFIG = {
+    URL: 'https://ldzzlndsspkyohvzfiiu.supabase.co',
+    KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxkenpsbmRzc3BreW9odnpmaWl1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE3MTEzMDUsImV4cCI6MjA3NzI4NzMwNX0.SK2Y7XMzeGQoVMq9KAmEN1vwy7RjtbIXZf6TyNneFnI'
+};
+
 export async function saveStoryToVault(
   storytellerName: string,
   transcript: string,
@@ -370,10 +448,7 @@ export async function saveStoryToVault(
 ): Promise<{ success: boolean; session_id?: string; error?: string }> {
   try {
     const { createClient } = await import('@supabase/supabase-js');
-    const supabase = createClient(
-      'https://ldzzlndsspkyohvzfiiu.supabase.co',
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxkenpsbmRzc3BreW9odnpmaWl1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE3MTEzMDUsImV4cCI6MjA3NzI4NzMwNX0.SK2Y7XMzeGQoVMq9KAmEN1vwy7RjtbIXZf6TyNneFnI'
-    );
+    const supabase = createClient(SUPABASE_CONFIG.URL, SUPABASE_CONFIG.KEY);
 
     const { data, error } = await supabase
       .from('storyscribe_stories')
@@ -408,10 +483,7 @@ export async function saveStoryToVault(
 export async function loadStoriesFromVault(limit: number = 20): Promise<any[]> {
   try {
     const { createClient } = await import('@supabase/supabase-js');
-    const supabase = createClient(
-      'https://ldzzlndsspkyohvzfiiu.supabase.co',
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxkenpsbmRzc3BreW9odnpmaWl1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE3MTEzMDUsImV4cCI6MjA3NzI4NzMwNX0.SK2Y7XMzeGQoVMq9KAmEN1vwy7RjtbIXZf6TyNneFnI'
-    );
+    const supabase = createClient(SUPABASE_CONFIG.URL, SUPABASE_CONFIG.KEY);
 
     const { data, error } = await supabase
       .from('storyscribe_stories')
@@ -424,5 +496,34 @@ export async function loadStoriesFromVault(limit: number = 20): Promise<any[]> {
   } catch (err) {
     console.error('[Vault] Load failed:', err);
     return [];
+  }
+}
+
+export async function loadStoryFromVault(sessionId: string): Promise<ActiveStory | null> {
+  try {
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabase = createClient(SUPABASE_CONFIG.URL, SUPABASE_CONFIG.KEY);
+
+    const { data, error } = await supabase
+      .from('storyscribe_stories')
+      .select('*')
+      .eq('session_id', sessionId)
+      .single();
+
+    if (error || !data) return null;
+    
+    return {
+      sessionId: data.session_id,
+      storytellerName: data.storyteller_name,
+      narrative: data.narrative,
+      extraction: data.extraction,
+      storyboard: data.storyboard,
+      generatedImages: data.assets?.images || [],
+      savedAt: data.created_at,
+      artifacts: data.extraction?.artifacts || []
+    };
+  } catch (err) {
+    console.error('[Vault] Public load failed:', err);
+    return null;
   }
 }
