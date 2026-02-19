@@ -1,27 +1,32 @@
 
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 
-interface Props {
+interface ErrorBoundaryProps {
   children?: ReactNode;
 }
 
-interface State {
+interface ErrorBoundaryState {
   hasError: boolean;
   error: Error | null;
 }
 
 /**
  * Standard React Error Boundary component to catch rendering errors in the tree.
- * Updated to use direct Component import and class properties to resolve TypeScript inheritance issues.
+ * Updated to use explicit Component inheritance and class property initialization 
+ * to resolve TypeScript property recognition issues.
  */
-class ErrorBoundary extends Component<Props, State> {
-  // Fix: Explicitly declare state as a class property to ensure TypeScript recognition of 'this.state'
-  public state: State = {
-    hasError: false,
-    error: null
-  };
+// FIX: Explicitly inherit from Component (imported from react) to ensure 'props' and 'state' are correctly typed and visible to the compiler.
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  // FIX: Use constructor to initialize state and call super(props), which is the most reliable way to ensure 'this.props' and 'this.state' are recognized.
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = {
+      hasError: false,
+      error: null
+    };
+  }
 
-  public static getDerivedStateFromError(error: Error): State {
+  public static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { hasError: true, error };
   }
 
@@ -30,8 +35,9 @@ class ErrorBoundary extends Component<Props, State> {
   }
 
   public render(): ReactNode {
-    // Fix: Access state inherited from Component base class
+    // FIX: Accessing 'state' and 'props' via 'this' which are now properly recognized by the TypeScript compiler via direct Component inheritance.
     const { hasError, error } = this.state;
+    const { children } = this.props;
 
     if (hasError) {
       return (
@@ -52,7 +58,6 @@ class ErrorBoundary extends Component<Props, State> {
                 Restart Archive Node
             </button>
             
-            {/* Fix: Access error from state and check for nullability before accessing stack */}
             {error && (
                 <div className="mt-12 pt-8 border-t border-white/5">
                     <p className="text-[9px] font-black text-red-500/40 uppercase tracking-[0.3em] mb-4">Transmission Diagnostics</p>
@@ -65,8 +70,9 @@ class ErrorBoundary extends Component<Props, State> {
         </div>
       );
     }
-    // Fix: Access children from props inherited from Component base class
-    return this.props.children;
+    
+    // Return children directly from props
+    return children;
   }
 }
 

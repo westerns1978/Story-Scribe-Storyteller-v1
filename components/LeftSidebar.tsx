@@ -1,10 +1,7 @@
 import React from 'react';
+import HomeIcon from './icons/HomeIcon';
 import PlusIcon from './icons/PlusIcon';
 import ArchiveBoxIcon from './icons/ArchiveBoxIcon';
-import ConnectivityIndicator from './ConnectivityIndicator';
-import SparklesIcon from './icons/SparklesIcon';
-import HomeIcon from './icons/HomeIcon';
-import BoltIcon from './icons/BoltIcon';
 import { Customer } from '../types';
 
 const NavButton: React.FC<{
@@ -15,16 +12,16 @@ const NavButton: React.FC<{
 }> = ({ label, isActive, onClick, children }) => (
   <button
     onClick={onClick}
-    className={`w-full flex items-center p-4 rounded-2xl transition-all duration-300 text-left gap-4 group haptic-tap ${
+    className={`w-full flex items-center px-5 py-3.5 min-h-[52px] rounded-xl transition-all duration-200 text-left gap-4 haptic-tap nav-item ${
       isActive
-        ? 'bg-gemynd-oxblood text-white shadow-lg'
-        : 'text-white/40 hover:bg-white/5 hover:text-gemynd-agedGold'
+        ? 'bg-heritage-warmGold/10 text-heritage-warmGold'
+        : 'text-heritage-inkSoft hover:bg-heritage-linen hover:text-heritage-ink'
     }`}
   >
-    <span className={`${isActive ? 'text-white' : 'text-gemynd-agedGold'} group-hover:scale-110 transition-transform`}>
+    <span className={`${isActive ? 'text-heritage-warmGold' : 'text-heritage-inkMuted'}`}>
         {children}
     </span>
-    <span className="text-[11px] font-black uppercase tracking-[0.2em] leading-none">{label}</span>
+    <span className="text-base font-semibold leading-none">{label}</span>
   </button>
 );
 
@@ -35,57 +32,46 @@ const LeftSidebar: React.FC<{
   onLogout?: () => void;
 }> = ({ currentView, setView, onLogout, customer }) => {
   return (
-    <aside className="w-full h-full bg-gemynd-mahogany flex flex-col justify-between p-8 border-r border-white/5">
+    <aside className="w-full h-full bg-white flex flex-col justify-between p-8 border-r border-heritage-parchment transition-colors duration-300">
       <div className="space-y-12">
-        <header className="px-2 flex items-center gap-4">
-            <div className="p-3 bg-gemynd-oxblood rounded-xl shadow-xl">
-                <BoltIcon className="w-6 h-6 text-white" />
-            </div>
-            <div>
-                <h1 className="text-2xl font-display font-black text-white tracking-tight">Gemynd.</h1>
-                <p className="text-[9px] font-black text-gemynd-agedGold/40 uppercase tracking-[0.4em] mt-0.5">Scribe Node</p>
+        <header className="px-2">
+            <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2">
+                    <span className="text-2xl" role="img" aria-label="Book">📖</span>
+                    <h1 className="text-2xl font-serif font-bold text-heritage-ink tracking-tight">Story Scribe</h1>
+                </div>
+                <p className="text-[11px] font-bold text-heritage-warmGold uppercase tracking-[0.2em] ml-8">by Gemynd</p>
             </div>
         </header>
 
-        <div className="p-6 bg-white/5 rounded-[2rem] border border-white/5 shadow-inner">
-            <div className="flex justify-between items-center mb-3">
-                <span className="text-[9px] font-black text-white/20 uppercase tracking-widest">Archive Core</span>
-                <span className="text-[9px] font-black text-gemynd-agedGold uppercase tracking-widest">Uplink Stable</span>
-            </div>
-            <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden mb-4">
-                <div className="h-full bg-gemynd-agedGold shadow-[0_0_10px_#D4AF37]" style={{width: '100%'}}></div>
-            </div>
-            <p className="text-[10px] font-black text-white/20 uppercase truncate">Archivist: {customer.name}</p>
-        </div>
-        
         <nav className="space-y-2">
-            <NavButton label="Home Base" isActive={currentView === 'welcome'} onClick={() => setView('welcome')}>
-              <HomeIcon className="w-5 h-5" />
+            <NavButton label="Home" isActive={currentView === 'welcome'} onClick={() => setView('welcome')}>
+              <HomeIcon className="w-6 h-6" />
             </NavButton>
-            <NavButton label="Restore Studio" isActive={currentView === 'restore-studio'} onClick={() => setView('restore-studio')}>
-              <SparklesIcon className="w-5 h-5" />
+            <NavButton label="New Story" isActive={currentView === 'new-story'} onClick={() => setView('new-story')}>
+              <PlusIcon className="w-6 h-6" />
             </NavButton>
-            <NavButton label="New Legacy" isActive={currentView === 'new-story'} onClick={() => setView('new-story')}>
-              <PlusIcon className="w-5 h-5" />
-            </NavButton>
-            <NavButton label="Legacy Vault" isActive={currentView === 'archive'} onClick={() => setView('archive')}>
-              <ArchiveBoxIcon className="w-5 h-5" />
+            <NavButton label="My Stories" isActive={currentView === 'archive'} onClick={() => setView('archive')}>
+              <ArchiveBoxIcon className="w-6 h-6" />
             </NavButton>
         </nav>
       </div>
       
-      <div className="space-y-6 pt-10 border-t border-white/5">
-        <ConnectivityIndicator />
+      <div className="pt-8 border-t border-heritage-parchment">
+        <div className="px-2 mb-6">
+            <p className="text-sm font-bold text-heritage-ink">Navarre Gardens</p>
+            <p className="text-[11px] text-heritage-inkMuted uppercase tracking-widest mt-1">Storyteller Session</p>
+        </div>
         
         {onLogout && (
           <button 
             onClick={onLogout}
-            className="w-full flex items-center p-4 rounded-2xl text-white/20 hover:text-red-400 hover:bg-gemynd-oxblood/5 transition-all group haptic-tap"
+            className="w-full flex items-center px-5 py-3 rounded-xl text-heritage-inkMuted hover:text-heritage-burgundy hover:bg-heritage-burgundy/5 transition-all group haptic-tap"
           >
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 group-hover:rotate-12 transition-transform">
               <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3 0 3-3m0 0-3-3m3 3H9" />
             </svg>
-            <span className="text-[10px] font-black uppercase tracking-[0.2em] ml-4">Terminate Link</span>
+            <span className="text-sm font-bold ml-4">Logout</span>
           </button>
         )}
       </div>

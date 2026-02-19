@@ -1,3 +1,4 @@
+
 import {
   ExtractResponse,
   GeneratedImage,
@@ -33,6 +34,36 @@ const cleanJson = (text: string | undefined) => {
     let cleaned = text.replace(/```json/gi, '').replace(/```/gi, '').trim();
     return cleaned;
 };
+
+/**
+ * Builds a descriptive anchor for a character to ensure visual consistency across AI generations.
+ */
+function buildCharacterDescription(name: string, extraction: any): string {
+    const parts: string[] = [name];
+    
+    // Pull from extraction's people/subject data
+    const subject = extraction.people?.find((p: any) => 
+        p.name?.toLowerCase().includes(name.split(' ')[0].toLowerCase())
+    ) || extraction.subject || {};
+    
+    if (subject.ethnicity || subject.background) {
+        parts.push(subject.ethnicity || subject.background);
+    }
+    if (extraction.background) {
+        parts.push(extraction.background);
+    }
+    if (extraction.born || extraction.birth_year) {
+        parts.push(`born ${extraction.born || extraction.birth_year}`);
+    }
+    if (extraction.setting?.primary || extraction.location) {
+        parts.push(extraction.setting?.primary || extraction.location);
+    }
+    if (extraction.occupation || subject.role) {
+        parts.push(extraction.occupation || subject.role);
+    }
+    
+    return parts.filter(Boolean).join(', ');
+}
 
 /**
  * Real-time translation for Multilingual Heritage Nodes
@@ -86,7 +117,8 @@ export async function diarize(transcript: string): Promise<string> {
 export async function generateImagesForStoryboard(
     storyboard: Storyboard, 
     extraction: StoryExtraction, 
-    style: string
+    style: string,
+    characterDescription?: string
 ): Promise<GeneratedImage[]> {
     console.log(`[Artisan] Initiating cinematic synthesis with Grok Imagine for style: ${style}`);
     
@@ -104,7 +136,8 @@ export async function generateImagesForStoryboard(
 
     try {
         const results = await grokArtisan.generateStoryboardImages(storyboard, extraction, { 
-            style: targetStyle 
+            style: targetStyle,
+            characterDescription
         });
         console.log(`[Artisan] Grok returned ${results.length} images.`);
         return results;
@@ -152,16 +185,20 @@ export async function generateStoryWithMagic(
                     TRANSCRIPT: "${transcript}"
                     HISTORICAL_RECORDS_TEXT: "${artifactContextText}"
                     INSTRUCTIONS:
-                    1. Narrative: A 1000-word masterpiece weaving verbal memories and historical document facts.
-                    2. Historical Anchoring: Research EVERY year/location mentioned. Populate "historical_context".
-                    3. Evocative Detail Synthesis: Populate "details" field with sensory immersion.
-                    4. For the Timeline: Include an "evocative_narration" for EVERY event. This is a 2-sentence atmospheric snippet written in the first person ("I remember..."), capturing the specific sights, sounds, and texture of that era and location.
-                    5. Output high-fidelity JSON.
+                    1. FACTUAL GROUNDING (MANDATORY): The narrative MUST use ONLY the names, dates, locations, relationships, and events found in the transcript and historical records. Do NOT invent, rename, relocate, or embellish any factual details. If the transcript says "Golden Dragon on Grant Avenue" — use exactly that. If the transcript says "wife Susan" — her name is Susan, not Mei, not anyone else. Every proper noun in your output must trace back to the source material.
+                    2. Narrative: A 1000-word literary narrative that elevates the REAL story through vivid sensory writing, emotional depth, and cinematic pacing — while remaining 100% faithful to the source facts.
+                    3. Historical Anchoring: Research EVERY year/location mentioned. Populate "historical_context" with REAL historical events that were happening at that time and place (e.g., if the story mentions 1965 San Francisco, reference the actual Immigration and Nationality Act).
+                    4. Evocative Detail Synthesis: Add atmospheric and sensory details that are PERIOD-APPROPRIATE and LOCATION-ACCURATE. If someone is in 1955 Detroit, describe the sounds of the River Rouge plant — not a factory in Pittsburgh.
+                    5. For the Timeline: Include an "evocative_narration" for EVERY event. This is a 2-sentence atmospheric snippet written in the first person ("I remember..."), capturing the specific sights, sounds, and texture of that era and location.
+                    6. VALIDATION CHECK: Before outputting, verify that every person name, location, date, and key event in your narrative appears in the source transcript. If it doesn't, remove it.
+                    7. Output high-fidelity JSON.
                     STYLE: ${narrativeStyle}
                     OUTPUT_JSON_SCHEMA:
                     {
                       "narrative": "string",
                       "summary": "string",
+                      "subject": {"name": "string", "ethnicity": "string", "background": "string", "born": "string", "occupation": "string"},
+                      "people": [{"name": "string", "relationship": "string", "ethnicity": "string", "role": "string"}],
                       "timeline": [{"year": "string", "event": "string", "significance": "string", "historical_context": "string", "details": "string", "evocative_narration": "string"}],
                       "locations": [{"name": "string", "type": "string"}],
                       "themes": ["string"],
@@ -188,6 +225,9 @@ export async function generateStoryWithMagic(
             };
         }
 
+        // Build character anchor for image generation
+        const characterDescription = buildCharacterDescription(storytellerName, scribeData);
+
         // --- STEP 2: AGENT CARTOGRAPHER ---
         if (onProgress) onProgress('agent_cartographer');
         
@@ -195,7 +235,7 @@ export async function generateStoryWithMagic(
         if (onProgress) onProgress('agent_illustrator');
         let finalImages: GeneratedImage[] = [];
         try {
-            finalImages = await generateImagesForStoryboard(scribeData.storyboard, scribeData as any, visualStyle);
+            finalImages = await generateImagesForStoryboard(scribeData.storyboard, scribeData as any, visualStyle, characterDescription);
             
             // Fix Heirlooms: Generate images for extracted artifacts
             if (scribeData.artifacts && scribeData.artifacts.length > 0) {

@@ -1,3 +1,4 @@
+
 import { StoryExtraction, Storyboard, GeneratedImage } from '../types';
 
 const MCP_URL = 'https://ldzzlndsspkyohvzfiiu.supabase.co/functions/v1/mcp-orchestrator';
@@ -100,7 +101,7 @@ class GrokArtisanService {
     async generateStoryboardImages(
         storyboard: Storyboard, 
         extraction: StoryExtraction,
-        overrides?: { style?: GrokStyle, era?: string }
+        overrides?: { style?: GrokStyle, era?: string, characterDescription?: string }
     ): Promise<GeneratedImage[]> {
         const { style, context } = this.determineStyleAndContext(extraction);
         
@@ -125,7 +126,8 @@ class GrokArtisanService {
             beats,
             visual_dna: storyboard.visual_dna || 'vintage, grainy film stock, soft lighting',
             story_context: finalContext,
-            style: finalStyle
+            style: finalStyle,
+            character_description: overrides?.characterDescription
         });
 
         if (!result.success) {

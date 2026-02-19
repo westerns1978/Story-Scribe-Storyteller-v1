@@ -10,18 +10,25 @@ interface ThemeContextType {
 export const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Lock to dark mode for cinematic MVP experience
-  const [theme] = useState<Theme>('dark');
+  const [theme, setTheme] = useState<Theme>(() => {
+    const saved = localStorage.getItem('theme');
+    return (saved as Theme) || 'light';
+  });
 
   useEffect(() => {
     const root = window.document.documentElement;
-    root.classList.add('dark');
-    root.classList.remove('light');
-    localStorage.setItem('theme', 'dark');
-  }, []);
+    if (theme === 'dark') {
+      root.classList.add('dark');
+      root.classList.remove('light');
+    } else {
+      root.classList.add('light');
+      root.classList.remove('dark');
+    }
+    localStorage.setItem('theme', theme);
+  }, [theme]);
 
   const toggleTheme = () => {
-    // No-op for MVP to prevent accidental light-mode flashes
+    setTheme(prev => prev === 'light' ? 'dark' : 'light');
   };
 
   const value = useMemo(() => ({ theme, toggleTheme }), [theme]);

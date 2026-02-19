@@ -9,10 +9,8 @@ import StorybookViewer from '../components/StorybookViewer';
 import Toast from '../components/Toast';
 import WelcomeView from '../components/WelcomeView';
 import HamburgerIcon from '../components/icons/HamburgerIcon';
-import BoltIcon from '../components/icons/BoltIcon';
 import { getArchivedStories, saveStory, deleteStory } from '../services/archiveService';
 import DirectorsCutViewer from '../components/DirectorsCutViewer';
-import ConnieChatWidget from '../components/ConnieChatWidget';
 import StoryReveal from '../components/StoryReveal';
 import MagicProgressOverlay from '../components/MagicProgressOverlay';
 import { PhotoEnhancer } from '../components/PhotoEnhancer';
@@ -23,7 +21,11 @@ import { modernTheme } from '../components/presentationThemes';
 type View = 'welcome' | 'new-story' | 'archive' | 'restore-studio';
 type ToastMessage = { id: number; message: string; type: 'success' | 'error' | 'warn' };
 
-export const AdminLayout: React.FC<{ customer: Customer; onLogout: () => void }> = ({ customer, onLogout }) => {
+export const AdminLayout: React.FC<{ 
+  customer: Customer; 
+  onLogout: () => void;
+  onOpenConnie: () => void;
+}> = ({ customer, onLogout, onOpenConnie }) => {
   const [view, setView] = useState<View>('welcome');
   const [activeStory, setActiveStory] = useState<ActiveStory | null>(null);
   const [stagedArtifacts, setStagedArtifacts] = useState<any[]>([]);
@@ -36,7 +38,6 @@ export const AdminLayout: React.FC<{ customer: Customer; onLogout: () => void }>
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [automatedProgress, setAutomatedProgress] = useState<AutomatedProgress>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [isConnieOpen, setIsConnieOpen] = useState(false);
   const [isMusicFinderOpen, setIsMusicFinderOpen] = useState(false);
   const [showReveal, setShowReveal] = useState(false);
   
@@ -70,13 +71,13 @@ export const AdminLayout: React.FC<{ customer: Customer; onLogout: () => void }>
     showToast("Artifact secured for Legacy Weave.", "success");
   };
 
-  const processStoryData = async (combinedText: string, name: string, style: string, cascade: boolean, artifacts: any[]) => {
+  const processStoryData = async (combinedText: string, name: string, style: string, cascade: boolean, artifacts: any[], visualStyle?: string, isQuick: boolean = false) => {
       setStatus(s => ({ ...s, extracting: true }));
       setAutomatedProgress('agent_scribe');
       
       try {
           const allArtifacts = [...artifacts, ...stagedArtifacts];
-          const response = await generateStoryWithMagic(combinedText, name, style, (step) => setAutomatedProgress(step), allArtifacts);
+          const response = await generateStoryWithMagic(combinedText, name, style, (step) => setAutomatedProgress(step), allArtifacts, visualStyle);
           
           const newStory: ActiveStory = {
             sessionId: response.session_id,
@@ -91,7 +92,7 @@ export const AdminLayout: React.FC<{ customer: Customer; onLogout: () => void }>
 
           setActiveStory(newStory);
           setAutomatedProgress('complete');
-          setStagedArtifacts([]); // Clear buffer after successful weave
+          setStagedArtifacts([]); 
 
           await saveStory({ ...newStory, id: newStory.sessionId, name: name, savedAt: new Date().toISOString() } as StoryArchiveItem);
 
@@ -112,14 +113,21 @@ export const AdminLayout: React.FC<{ customer: Customer; onLogout: () => void }>
   return (
     <div className="h-full w-full flex flex-col lg:flex-row relative bg-gemynd-linen dark:bg-gemynd-mahogany overflow-hidden">
       <MagicProgressOverlay progress={automatedProgress} />
-      {showReveal && activeStory && <StoryReveal storyData={activeStory} onComplete={() => setShowReveal(false)} />}
+      {showReveal && activeStory && (
+        <StoryReveal 
+          storyData={activeStory} 
+          onComplete={() => {
+            setShowReveal(false);
+            setStoryForModal(activeStory);
+            setIsStorybookOpen(true);
+          }} 
+        />
+      )}
       
       <nav className={`fixed inset-y-0 left-0 w-72 h-full z-[200] lg:relative lg:translate-x-0 transition-transform duration-500 ease-in-out glass-tier-1 lg:bg-white/5 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
           <LeftSidebar 
               currentView={view} 
               setView={(v) => { setView(v as View); setIsSidebarOpen(false); }} 
-              onSettings={() => {}} onDebug={() => {}} onHelp={() => {}} 
-              onOpenConnie={() => { setIsConnieOpen(true); setIsSidebarOpen(false); }}
               customer={customer}
               onLogout={onLogout}
           />
@@ -156,7 +164,7 @@ export const AdminLayout: React.FC<{ customer: Customer; onLogout: () => void }>
                   onNarrativeChange={(n) => setActiveStory(s => s ? {...s, narrative: n} : null)}
                   onOpenMusicFinder={() => setIsMusicFinderOpen(true)} 
                   onFinalizeAndReveal={() => setIsStorybookOpen(true)}
-                  onOpenConnie={() => setIsConnieOpen(true)}
+                  onOpenConnie={onOpenConnie}
                   onOpenScanner={() => {}} onOpenEnhancer={() => {}} 
                   showToast={showToast}
                   narrationAudio={narrationAudio} 
@@ -186,8 +194,6 @@ export const AdminLayout: React.FC<{ customer: Customer; onLogout: () => void }>
         </main>
       </div>
 
-      <ConnieChatWidget isOpen={isConnieOpen} setIsOpen={setIsConnieOpen} onConversationEnd={() => { setView('new-story'); setIsConnieOpen(false); }} onExecuteCommand={() => {}} />
-      
       <ErrorBoundary>
         <StorybookViewer isOpen={isStorybookOpen} onClose={() => setIsStorybookOpen(false)} story={storyForModal as any || activeStory as any} showToast={showToast} />
       </ErrorBoundary>

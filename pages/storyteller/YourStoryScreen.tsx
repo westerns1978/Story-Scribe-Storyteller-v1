@@ -60,30 +60,30 @@ export const YourStoryScreen: React.FC<YourStoryScreenProps> = ({ story, onResta
   }
 
   return (
-    <div className="h-full w-full bg-gemynd-linen overflow-y-auto animate-fade-in p-8 lg:p-20 scroll-viewport relative">
-      <div className="max-w-4xl mx-auto space-y-16 pb-32">
+    <div className="h-full w-full bg-gemynd-linen overflow-y-auto animate-fade-in p-6 lg:p-12 scroll-viewport relative">
+      <div className="max-w-4xl mx-auto space-y-12 pb-32">
         <header className="text-center space-y-4">
-          <div className="w-20 h-20 mx-auto mb-8 relative">
+          <div className="w-16 h-16 mx-auto mb-6 relative">
               <div className="absolute inset-0 bg-gemynd-oxblood/10 blur-2xl rounded-full animate-pulse"></div>
               <img src="https://storage.googleapis.com/gemynd-public/projects/gemynd-portal/gemnyd-branding/Gemynd_Logo_Red_Version.png" className="w-full h-full object-contain relative z-10" alt="Logo" />
           </div>
-          <h1 className="text-4xl lg:text-7xl font-display font-black text-gemynd-ink tracking-tighter">
+          <h1 className="text-3xl lg:text-5xl font-display font-black text-gemynd-ink tracking-tighter">
             The Legacy of <br/><span className="text-gemynd-oxblood">{storytellerName}</span>
           </h1>
-          <p className="text-lg font-serif italic text-gemynd-ink/50">Synthesized and secured in the Gemynd Vault.</p>
+          <p className="text-base lg:text-lg font-serif italic text-gemynd-ink/50">Synthesized and secured in the Gemynd Vault.</p>
           <button 
             onClick={() => setViewMode('cinematic')}
-            className="mt-6 px-6 py-2 bg-gemynd-agedGold/10 hover:bg-gemynd-agedGold/20 rounded-full text-[10px] font-black text-gemynd-agedGold uppercase tracking-widest border border-gemynd-agedGold/20 transition-all"
+            className="mt-6 px-6 py-2 bg-gemynd-agedGold/10 hover:bg-gemynd-agedGold/20 rounded-full text-[9px] font-black text-gemynd-agedGold uppercase tracking-widest border border-gemynd-agedGold/20 transition-all"
           >
             Re-watch Movie
           </button>
         </header>
 
         {hasStoryboard && (
-          <section className="space-y-8">
+          <section className="space-y-6">
             <div className="text-center">
-              <h3 className="text-2xl font-display font-black text-gemynd-ink uppercase tracking-tight">The Cinematic Sequence</h3>
-              <div className="w-12 h-0.5 bg-gemynd-oxblood/20 mx-auto mt-2" />
+              <h3 className="text-xl font-display font-black text-gemynd-ink uppercase tracking-tight">The Cinematic Sequence</h3>
+              <div className="w-10 h-0.5 bg-gemynd-oxblood/20 mx-auto mt-2" />
             </div>
             <VisualStoryboard 
               storyboard={story.storyboard!}
@@ -96,19 +96,19 @@ export const YourStoryScreen: React.FC<YourStoryScreenProps> = ({ story, onResta
         )}
 
         {story.narrative && (
-          <section className="bg-white rounded-[3rem] p-10 lg:p-20 shadow-xl border border-gemynd-softPeach relative overflow-hidden">
+          <section className="bg-white rounded-[2.5rem] p-10 lg:p-14 shadow-xl border border-gemynd-softPeach relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-1 bg-gemynd-oxblood opacity-10" />
-            <div className="prose prose-xl font-serif text-gemynd-ink/80 italic leading-relaxed whitespace-pre-wrap">
+            <div className="prose prose-lg font-serif text-gemynd-ink/80 italic leading-relaxed whitespace-pre-wrap">
               {story.narrative}
             </div>
           </section>
         )}
 
         {hasTimeline && (
-          <section className="space-y-8">
+          <section className="space-y-6">
             <div className="text-center">
-              <h3 className="text-2xl font-display font-black text-gemynd-ink uppercase tracking-tight">Life Chronology</h3>
-              <div className="w-12 h-0.5 bg-gemynd-oxblood/20 mx-auto mt-2" />
+              <h3 className="text-xl font-display font-black text-gemynd-ink uppercase tracking-tight">Life Chronology</h3>
+              <div className="w-10 h-0.5 bg-gemynd-oxblood/20 mx-auto mt-2" />
             </div>
             <TimelineVisualizer 
               timeline={story.extraction!.timeline} 
@@ -120,25 +120,25 @@ export const YourStoryScreen: React.FC<YourStoryScreenProps> = ({ story, onResta
         <div className="flex flex-col sm:flex-row gap-4 justify-center pt-8">
           <button 
             onClick={() => setIsViewerOpen(true)}
-            className="px-12 py-6 bg-gemynd-oxblood text-white font-black rounded-full shadow-2xl flex items-center justify-center gap-4 text-xs uppercase tracking-widest transform hover:scale-[1.02] active:scale-95 transition-all"
+            className="px-10 py-5 bg-gemynd-oxblood text-white font-black rounded-full shadow-2xl flex items-center justify-center gap-4 text-xs uppercase tracking-widest transform hover:scale-[1.02] active:scale-95 transition-all"
           >
-            <BookOpenIcon className="w-5 h-5" /> Open Storybook
+            <BookOpenIcon className="w-4 h-4" /> Open Storybook
           </button>
           <button 
             onClick={handleShareWithFamily}
-            className="px-12 py-6 bg-white border border-gemynd-ink/10 text-gemynd-ink font-black rounded-full shadow-sm flex items-center justify-center gap-4 text-xs uppercase tracking-widest hover:bg-gemynd-linen transition-all"
+            className="px-10 py-5 bg-white border border-gemynd-ink/10 text-gemynd-ink font-black rounded-full shadow-sm flex items-center justify-center gap-4 text-xs uppercase tracking-widest hover:bg-gemynd-linen transition-all"
           >
-            <ShareIcon className="w-5 h-5" /> 
+            <ShareIcon className="w-4 h-4" /> 
             {copyFeedback ? 'Link Copied!' : 'Share with Family'}
           </button>
         </div>
 
-        <div className="pt-10 text-center">
+        <div className="pt-8 text-center">
            <button 
              onClick={onRestart}
-             className="inline-flex items-center gap-3 text-[10px] font-black uppercase tracking-[0.3em] text-gemynd-ink/30 hover:text-gemynd-oxblood transition-colors group"
+             className="inline-flex items-center gap-3 text-[9px] font-black uppercase tracking-[0.2em] text-gemynd-ink/30 hover:text-gemynd-oxblood transition-colors group"
            >
-             <ArrowPathIcon className="w-4 h-4 transition-transform group-hover:rotate-180" />
+             <ArrowPathIcon className="w-3 h-3 transition-transform group-hover:rotate-180" />
              Start a new session
            </button>
         </div>

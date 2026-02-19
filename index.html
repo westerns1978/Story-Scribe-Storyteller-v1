@@ -5,41 +5,56 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <link rel="manifest" href="./manifest.json">
-    <meta name="theme-color" content="#962D2D">
+    <meta name="theme-color" content="#8B2E3B">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Story Scribe">
     
-    <title>Gemynd | Story Scribe</title>
+    <title>Story Scribe | Preservation</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&family=Lora:ital,wght@0,400..700;1,400..700&family=Playfair+Display:wght@700;800;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script>
       tailwind.config = {
         darkMode: 'class',
         theme: {
           extend: {
             fontFamily: { 
-              sans: ['Inter', 'sans-serif'], 
-              serif: ['Lora', 'serif'],
-              display: ['Playfair Display', 'serif']
+              sans: ['"DM Sans"', 'system-ui', 'sans-serif'], 
+              serif: ['"Crimson Pro"', 'Georgia', 'serif'],
+              display: ['"Crimson Pro"', 'serif']
             },
             colors: { 
+              heritage: {
+                cream: '#FDF6EC',
+                linen: '#FAF0E4',
+                parchment: '#EDE4D3',
+                warmGold: '#C4973B',
+                burgundy: '#8B2E3B',
+                sage: '#7A8B6F',
+                ink: '#2C2418',
+                inkSoft: '#5C4F3D',
+                inkMuted: '#8A7E6D'
+              },
               gemynd: {
-                linen: '#F9F7F2',
-                mahogany: '#0D0B0A',
-                oxblood: '#962D2D',
-                agedGold: '#D4AF37',
-                ink: '#1A1715',
-                red: '#A82D2D',
-                gold: '#EAB308',
-                terracotta: '#C97759',
-                sienna: '#8B4513',
-                cream: '#FCF9F6',
-                deepBrown: '#2A2522',
-                softPeach: '#E8E2D9'
+                linen: '#FAF0E4',
+                ink: '#2C2418',
+                oxblood: '#8B2E3B',
+                red: '#A63D4D',
+                mahogany: '#1a1210',
+                agedGold: '#C4973B',
+                softPeach: '#EDE4D3'
               }
+            },
+            boxShadow: {
+              'warm': '0 10px 30px -5px rgba(44, 36, 24, 0.12)',
+              'warm-lg': '0 20px 50px -10px rgba(44, 36, 24, 0.18)'
+            },
+            borderRadius: {
+              'xl': '14px',
+              '2xl': '20px',
+              '3xl': '28px'
             }
           }
         }
@@ -47,90 +62,73 @@
     </script>
     <style>
       :root {
-        --glass-bg: rgba(255, 255, 255, 0.9);
-        --glass-border: rgba(42, 37, 34, 0.15);
-        --glass-blur: 20px;
-        --bg-main: #F9F7F2; 
-        --text-main: #1A1715;
-        --text-secondary: #4A4542;
-        --text-muted: #8E8986;
+        --bg-main: #FDF6EC; 
+        --text-main: #2C2418;
+        --text-secondary: #5C4F3D;
+        --border-main: #EDE4D3;
+        font-size: 16px;
       }
       
-      .dark {
-        --glass-bg: rgba(13, 11, 10, 0.88);
-        --glass-border: rgba(255, 255, 255, 0.12);
-        --glass-blur: 24px;
-        --bg-main: #0D0B0A; 
-        --text-main: #F9F7F2;
-        --text-secondary: #D1CDC7;
-        --text-muted: #8C8884;
-      }
-
-      html, body {
-        overscroll-behavior-y: contain;
-      }
-
       body { 
-        overscroll-behavior-y: none;
-        background-color: var(--bg-main);
         color: var(--text-main);
+        background-color: var(--bg-main);
         margin: 0;
-        height: 100svh;
         width: 100%;
-        position: fixed;
-        transition: background-color 0.8s ease, color 0.3s ease;
-        font-family: 'Inter', sans-serif;
+        font-family: 'DM Sans', sans-serif;
         -webkit-font-smoothing: antialiased;
       }
 
-      .glass-tier-1 {
-        background: var(--glass-bg);
-        backdrop-filter: blur(var(--glass-blur));
-        border: 1px solid var(--glass-border);
-        box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.15);
+      /* Elderly Accessibility Mode */
+      .elderly-mode {
+          font-size: 17px;
       }
 
-      .glass-tier-2 {
-        background: rgba(255, 255, 255, 0.08);
-        backdrop-filter: blur(40px);
-        border: 1px solid rgba(255, 255, 255, 0.18);
-        box-shadow: inset 0 1px 1px rgba(255,255,255,0.1);
+      .elderly-mode button {
+          min-height: 62px;
       }
 
-      .dark .glass-tier-2 {
-        background: rgba(255, 255, 255, 0.03);
-        border: 1px solid rgba(255, 255, 255, 0.08);
+      .elderly-mode .nav-item {
+          min-height: 58px;
       }
 
-      .scroll-viewport {
-        height: 100%;
-        overflow-y: auto;
-        overflow-x: hidden;
-        -webkit-overflow-scrolling: touch;
-        scroll-behavior: smooth;
-        padding-bottom: env(safe-area-inset-bottom, 140px);
+      .elderly-mode .connie-fab {
+          width: 76px;
+          height: 76px;
       }
 
-      .haptic-tap:active { transform: scale(0.96); transition: transform 0.1s; }
+      .elderly-mode p,
+      .elderly-mode span,
+      .elderly-mode div {
+          line-height: 1.6;
+      }
 
-      .paper-grain::before {
+      .glass-card {
+        background: rgba(255, 255, 255, 0.7);
+        backdrop-filter: blur(12px);
+        border: 1px solid var(--border-main);
+      }
+
+      .haptic-tap:active { transform: scale(0.97); transition: transform 0.1s; }
+
+      .paper-texture::before {
         content: "";
         position: fixed;
         inset: 0;
         background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 250 250' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
         pointer-events: none;
         z-index: 50;
+        opacity: 0.5;
       }
 
-      ::-webkit-scrollbar { width: 0px; }
-      .pb-safe { padding-bottom: env(safe-area-inset-bottom, 0px); }
-      .pt-safe { padding-top: env(safe-area-inset-top, 0px); }
+      /* Scrollbar */
+      ::-webkit-scrollbar { width: 8px; height: 8px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: #EDE4D3; border-radius: 10px; }
+      ::-webkit-scrollbar-thumb:hover { background: #C4973B; }
 
-      /* Animation Primitives */
       @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
-      @keyframes slide-up { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-      .animate-fade-in { animation: fade-in 0.4s ease-out forwards; }
-      .animate-slide-up { animation: slide-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+      @keyframes slide-up { from { transform: translateY(12px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+      .animate-appear { animation: slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
     </style>
     <script type="importmap">
 {
@@ -151,17 +149,8 @@
 }
 </script>
   </head>
-  <body class="paper-grain">
+  <body class="paper-texture">
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
-    <script>
-      if ('serviceWorker' in navigator) {
-          window.addEventListener('load', () => {
-              navigator.serviceWorker.register('./service-worker.js')
-                  .then(reg => console.log('Story Scribe SW:', reg.scope))
-                  .catch(err => console.warn('SW blocked:', err.message));
-          });
-      }
-    </script>
   </body>
 </html>
