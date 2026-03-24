@@ -24,15 +24,13 @@ Story Scribe is a cutting-edge, AI-powered web application designed to capture, 
 *   **Framework:** React 19 (Vite)
 *   **Language:** TypeScript
 *   **Styling:** Tailwind CSS
-*   **AI:** Google Gemini API
-    *   `gemini-2.5-flash` / `gemini-2.5-pro` (Text & Analysis)
-    *   `imagen-4.0-generate-001` (Image Generation)
-    *   `veo-3.1-fast-generate-preview` (Video Generation)
+*   **AI:** Google Gemini API (Direct Frontend Integration)
+    *   `gemini-3-flash-preview` (Transcription & Turn-based Chat)
+    *   `gemini-3.1-pro-preview` (Complex Analysis & Narrative Generation)
     *   `gemini-2.5-flash-preview-tts` (Text-to-Speech)
     *   `gemini-2.5-flash-native-audio-preview-09-2025` (Live Conversational AI)
-*   **Backend:** Python (FastAPI) hosted on Google Cloud Run.
-*   **Local Storage:** Browser `localStorage` is used for the story archive and user settings.
-*   **Offline Support:** A Service Worker (`sw.js`) provides basic offline caching for the application shell and key assets.
+*   **Backend:** Serverless architecture with direct API calls to Google Gemini.
+*   **Local Storage:** Browser `localStorage` and `IndexedDB` (via `idb`) for story archive and session persistence.
 
 ---
 

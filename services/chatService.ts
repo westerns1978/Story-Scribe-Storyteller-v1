@@ -75,7 +75,7 @@ class ChatService {
       const ai = getAiClient();
       
       const chat = ai.chats.create({
-          model: 'gemini-2.0-flash',
+          model: 'gemini-2.5-flash',
           history: history.map(h => ({
               role: h.role,
               parts: h.parts

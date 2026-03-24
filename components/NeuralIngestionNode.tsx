@@ -16,11 +16,11 @@ interface NeuralIngestionNodeProps {
 }
 
 export const NeuralIngestionNode: React.FC<NeuralIngestionNodeProps> = ({ isOpen, onClose, onAssetIngested }) => {
-  const [uplinkStatus, setUplinkStatus] = useState<'offline' | 'healthy'>('offline');
+  const [connectionStatus, setConnectionStatus] = useState<'offline' | 'healthy'>('offline');
   const [isDragging, setIsDragging] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
-  const [transmissionProgress, setTransmissionProgress] = useState(0);
-  const [isTransmitting, setIsTransmitting] = useState(false);
+  const [transferProgress, setTransferProgress] = useState(0);
+  const [isTransferring, setIsTransferring] = useState(false);
 
   const addLog = (msg: string) => {
     setLogs(prev => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev].slice(0, 10));
@@ -29,47 +29,47 @@ export const NeuralIngestionNode: React.FC<NeuralIngestionNodeProps> = ({ isOpen
   useEffect(() => {
     if (isOpen) {
       storageService.checkConnection().then(res => {
-        setUplinkStatus(res.status as any);
-        addLog(`NEURAL_UPLINK: ${res.message.toUpperCase()}`);
+        setConnectionStatus(res.status as any);
+        addLog(`MEMORY_CONNECTION: ${res.message.toUpperCase()}`);
       });
     }
   }, [isOpen]);
 
   const handleIngest = async (files: FileList) => {
-    if (files.length === 0 || isTransmitting) return;
+    if (files.length === 0 || isTransferring) return;
     
-    setIsTransmitting(true);
-    setTransmissionProgress(10);
+    setIsTransferring(true);
+    setTransferProgress(10);
     const file = files[0];
     
-    addLog(`INITIATING_TRANSMISSION: ${file.name}`);
+    addLog(`INITIATING_TRANSFER: ${file.name}`);
     
     try {
       // 1. Multimodal Pipe: DNA Extraction
-      addLog("EXTRACTING_DOCUMENT_DNA: ANALYZING...");
-      setTransmissionProgress(30);
+      addLog("EXTRACTING_MEMORY_DNA: ANALYZING...");
+      setTransferProgress(30);
       const base64 = await fileToBase64(file);
       const dna = await extractDocumentDNA(base64, file.type);
       addLog(`DNA_EXTRACTED: ${dna.title.toUpperCase()}`);
-      setTransmissionProgress(60);
+      setTransferProgress(60);
 
       // 2. High-Voltage Transmission: Supabase Upload
-      addLog("COMMITTING_TO_VAULT: PDS_LEXINGTON_NODE...");
+      addLog("COMMITTING_TO_VAULT: PDS_LEXINGTON_VAULT...");
       const asset = await storageService.uploadFile(file, dna);
       
-      setTransmissionProgress(100);
-      addLog("TRANSMISSION_COMPLETE: ARTIFACT_SECURED");
+      setTransferProgress(100);
+      addLog("TRANSFER_COMPLETE: ARTIFACT_SECURED");
       
       setTimeout(() => {
         onAssetIngested(asset);
-        setIsTransmitting(false);
-        setTransmissionProgress(0);
+        setIsTransferring(false);
+        setTransferProgress(0);
       }, 1000);
 
     } catch (err: any) {
-      addLog(`TRANSMISSION_ERROR: ${err.message || 'LINK_FAILURE'}`);
-      setIsTransmitting(false);
-      setTransmissionProgress(0);
+      addLog(`TRANSFER_ERROR: ${err.message || 'LINK_FAILURE'}`);
+      setIsTransferring(false);
+      setTransferProgress(0);
     }
   };
 
@@ -93,11 +93,11 @@ export const NeuralIngestionNode: React.FC<NeuralIngestionNodeProps> = ({ isOpen
             <div className="flex items-center gap-3">
               <BoltIcon className="w-8 h-8 text-[#FFB800] animate-pulse" />
               <div>
-                <h2 className="text-2xl font-bold text-white tracking-tight">Neural Ingestion Node</h2>
+                <h2 className="text-2xl font-bold text-white tracking-tight">Memory Ingestion Node</h2>
                 <div className="flex items-center gap-2 mt-1">
-                  <div className={`w-2 h-2 rounded-full ${uplinkStatus === 'healthy' ? 'bg-[#FFB800] animate-pulse' : 'bg-red-500'}`} />
+                  <div className={`w-2 h-2 rounded-full ${connectionStatus === 'healthy' ? 'bg-[#FFB800] animate-pulse' : 'bg-red-500'}`} />
                   <span className="text-[10px] font-mono text-white/40 tracking-[0.2em] uppercase">
-                    {uplinkStatus === 'healthy' ? 'UPLINK_STABLE' : 'UPLINK_OFFLINE'}
+                    {connectionStatus === 'healthy' ? 'CONNECTION_STABLE' : 'CONNECTION_OFFLINE'}
                   </span>
                 </div>
               </div>
@@ -116,7 +116,7 @@ export const NeuralIngestionNode: React.FC<NeuralIngestionNodeProps> = ({ isOpen
                 isDragging ? 'border-[#FFB800] bg-[#FFB800]/5 scale-105' : 'border-white/10 hover:border-white/30'
               }`}
             >
-              {isTransmitting ? (
+              {isTransferring ? (
                 <div className="relative z-10 w-full px-8">
                   <div className="w-20 h-20 bg-[#FFB800]/10 rounded-full flex items-center justify-center mx-auto mb-6">
                     <SparklesIcon className="w-10 h-10 text-[#FFB800] animate-spin" />
@@ -124,17 +124,17 @@ export const NeuralIngestionNode: React.FC<NeuralIngestionNodeProps> = ({ isOpen
                   <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
                     <div 
                       className="h-full bg-gradient-to-r from-[#FFB800] to-[#FFD700] transition-all duration-500 shadow-[0_0_15px_#FFB800]"
-                      style={{ width: `${transmissionProgress}%` }}
+                      style={{ width: `${transferProgress}%` }}
                     />
                   </div>
-                  <p className="mt-4 font-mono text-[#FFB800] text-xs animate-pulse">TRANSMITTING_DATA...</p>
+                  <p className="mt-4 font-mono text-[#FFB800] text-xs animate-pulse">TRANSFERRING_DATA...</p>
                 </div>
               ) : (
                 <>
                   <div className="absolute inset-0 bg-gradient-to-b from-[#FFB800]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                   <DocumentArrowUpIcon className="w-16 h-16 text-white/20 group-hover:text-[#FFB800] group-hover:scale-110 transition-all duration-500 mb-6" />
-                  <h3 className="text-xl font-bold text-white mb-2">Initialize Transmission</h3>
-                  <p className="text-white/40 text-sm max-w-[200px]">Drop historical records or scan artifacts to neural vault.</p>
+                  <h3 className="text-xl font-bold text-white mb-2">Initialize Transfer</h3>
+                  <p className="text-white/40 text-sm max-w-[200px]">Drop historical records or scan artifacts to memory vault.</p>
                   <input 
                     type="file" 
                     onChange={e => e.target.files && handleIngest(e.target.files)} 
@@ -146,13 +146,13 @@ export const NeuralIngestionNode: React.FC<NeuralIngestionNodeProps> = ({ isOpen
           </main>
 
           <footer className="mt-8">
-            <p className="text-[10px] font-mono text-white/20 tracking-widest uppercase">Solaris High-Voltage Archive System v4.0</p>
+            <p className="text-[10px] font-mono text-white/20 tracking-widest uppercase">Memory Archive System v4.0</p>
           </footer>
         </div>
 
         {/* Right Panel: Transmission Telemetry */}
         <div className="lg:w-80 bg-black/40 p-10 flex flex-col font-mono text-[10px]">
-          <h3 className="text-white/40 tracking-widest uppercase mb-6 border-b border-white/5 pb-2">Telemetry Log</h3>
+          <h3 className="text-white/40 tracking-widest uppercase mb-6 border-b border-white/5 pb-2">Activity Log</h3>
           <div className="flex-1 overflow-hidden space-y-3">
             {logs.map((log, i) => (
               <div key={i} className={`flex items-start gap-3 transition-opacity duration-500 ${i === 0 ? 'text-[#FFB800]' : 'text-white/40'}`}>

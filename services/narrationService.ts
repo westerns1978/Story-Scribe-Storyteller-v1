@@ -1,65 +1,138 @@
+// services/narrationService.ts
+// ============================================
+// SERVER-SIDE NARRATION — Routes through story-cascade edge function
+// NO browser-side Gemini calls — works in published build
+// ============================================
 
-import { GoogleGenAI, Modality } from '@google/genai';
+const SUPABASE_URL = 'https://ldzzlndsspkyohvzfiiu.supabase.co';
+const SUPABASE_ANON_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxkenpsbmRzc3BreW9odnpmaWl1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE3MTEzMDUsImV4cCI6MjA3NzI4NzMwNX0.SK2Y7XMzeGQoVMq9KAmEN1vwy7RjtbIXZf6TyNneFnI';
 
-/**
- * Generates audio narration from text using the Gemini TTS model.
- * @param text The text to be converted to speech.
- * @param voiceName The name of the prebuilt voice to use (e.g., 'Puck', 'Kore', 'Fenrir').
- * @returns A promise that resolves to a base64 encoded string of the raw PCM audio data.
- */
-export const generateNarration = async (text: string, voiceName: string = 'Kore'): Promise<string> => {
-    // A new AI instance should be created for each call if API keys can change.
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// ─── Decode base64 PCM (24kHz, mono, 16-bit signed) → Web Audio AudioBuffer ───
+async function pcmBase64ToAudioBuffer(base64: string, sampleRate = 24000): Promise<AudioBuffer> {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
 
-    const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash-preview-tts",
-        contents: [{ parts: [{ text: `Please narrate the following story in a warm, gentle, and slightly reflective voice: ${text}` }] }],
-        config: {
-            responseModalities: [Modality.AUDIO],
-            speechConfig: {
-                voiceConfig: {
-                  // Using the selected voice
-                  prebuiltVoiceConfig: { voiceName: voiceName },
-                },
-            },
-        },
+  const pcm16 = new Int16Array(bytes.buffer);
+  const float32 = new Float32Array(pcm16.length);
+  for (let i = 0; i < pcm16.length; i++) float32[i] = pcm16[i] / 32768.0;
+
+  const ctx = new AudioContext({ sampleRate });
+  const buffer = ctx.createBuffer(1, float32.length, sampleRate);
+  buffer.getChannelData(0).set(float32);
+  return buffer;
+}
+
+// ─── Main export: narrate text via edge function ───
+export async function narrateText(
+  text: string,
+  voiceName = 'Kore'
+): Promise<{ audioBuffer: AudioBuffer; audioContext: AudioContext } | null> {
+  if (!text?.trim()) return null;
+
+  try {
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/story-cascade`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        apikey: SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({
+        action: 'narrate',
+        text: text.trim(),
+        voice_name: voiceName, // matches edge function: const { text, voice_name = 'Kore' } = body
+      }),
     });
 
-    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-
-    if (!base64Audio) {
-        throw new Error("Audio generation failed: No audio data received from the API.");
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error('[narrationService] Edge function error:', response.status, errText);
+      return null;
     }
 
-    return base64Audio;
-};
+    const data = await response.json();
 
-/**
- * Generates a multi-speaker podcast conversation.
- * @param script The script text containing "Alex:" and "Jamie:" dialogues.
- */
-export const generatePodcastAudio = async (script: string): Promise<string> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    if (!data.audio) {
+      console.error('[narrationService] No audio in response:', data);
+      return null;
+    }
 
-    const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash-preview-tts",
-        contents: [{ parts: [{ text: script }] }],
-        config: {
-            responseModalities: [Modality.AUDIO],
-            speechConfig: {
-                multiSpeakerVoiceConfig: {
-                    speakerVoiceConfigs: [
-                        { speaker: 'Alex', voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
-                        { speaker: 'Jamie', voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Fenrir' } } }
-                    ]
-                }
-            },
-        },
+    const audioContext = new AudioContext({ sampleRate: 24000 });
+    const audioBuffer = await pcmBase64ToAudioBuffer(data.audio, 24000);
+    return { audioBuffer, audioContext };
+  } catch (err) {
+    console.error('[narrationService] Failed:', err);
+    return null;
+  }
+}
+
+// ─── Play an AudioBuffer, returns a stop function ───
+export function playAudioBuffer(
+  audioBuffer: AudioBuffer,
+  audioContext: AudioContext,
+  options: { onEnded?: () => void; gainValue?: number } = {}
+): () => void {
+  const source = audioContext.createBufferSource();
+  source.buffer = audioBuffer;
+
+  const gainNode = audioContext.createGain();
+  gainNode.gain.value = options.gainValue ?? 1.0;
+
+  source.connect(gainNode);
+  gainNode.connect(audioContext.destination);
+  source.start(0);
+
+  if (options.onEnded) source.onended = options.onEnded;
+
+  return () => {
+    try { source.stop(); } catch { /* already stopped */ }
+  };
+}
+
+// ─── Narrate + play in one call (used by CinematicReveal) ───
+export async function narrateAndPlay(
+  text: string,
+  voiceName = 'Kore',
+  options: { onEnded?: () => void; gainValue?: number } = {}
+): Promise<(() => void) | null> {
+  const result = await narrateText(text, voiceName);
+  if (!result) return null;
+  return playAudioBuffer(result.audioBuffer, result.audioContext, options);
+}
+
+// ─── Analyze photo via edge function (field names match edge function) ───
+export async function analyzePhoto(
+  file: File
+): Promise<Record<string, string> | null> {
+  try {
+    const base64 = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve((reader.result as string).split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
     });
 
-    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (!base64Audio) {
-        throw new Error("Podcast audio generation failed.");
-    }
-    return base64Audio;
-};
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/story-cascade`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        apikey: SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({
+        action: 'analyze_photo',
+        image_base64: base64,   // ✓ matches edge function: const { image_base64, mime_type } = body
+        mime_type: file.type,   // ✓ matches edge function
+      }),
+    });
+
+    if (!response.ok) return null;
+    const data = await response.json();
+    return data.analysis || null;
+  } catch (err) {
+    console.error('[analyzePhoto] Failed:', err);
+    return null;
+  }
+}

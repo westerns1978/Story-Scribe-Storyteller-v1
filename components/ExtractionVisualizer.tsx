@@ -69,7 +69,7 @@ const ExtractionVisualizer: React.FC<ExtractionVisualizerProps> = ({ extraction 
                         <div className="space-y-2 relative z-10">
                             <div className="flex items-center gap-2">
                                 <p className="text-[9px] font-black text-blue-400 uppercase tracking-[0.3em]">Historical Grounding</p>
-                                <span className="px-1.5 py-0.5 rounded-full bg-blue-500/20 text-[7px] text-blue-300 font-bold uppercase tracking-widest">Verified Node</span>
+                                <span className="px-1.5 py-0.5 rounded-full bg-blue-500/20 text-[7px] text-blue-300 font-bold uppercase tracking-widest">Verified Memory</span>
                             </div>
                             <p className="text-sm text-slate-300 leading-relaxed font-medium">
                                 {event.historical_context}
@@ -80,7 +80,7 @@ const ExtractionVisualizer: React.FC<ExtractionVisualizerProps> = ({ extraction 
               </div>
             ))
           ) : (
-            <div className="py-20 text-center opacity-20 italic">Awaiting neural sequence generation...</div>
+            <div className="py-20 text-center opacity-20 italic">Awaiting memory sequence generation...</div>
           )}
         </div>
       </section>
@@ -97,7 +97,7 @@ const ExtractionVisualizer: React.FC<ExtractionVisualizerProps> = ({ extraction 
                   <span className="text-sm font-bold text-white">{member?.name || ''}</span>
                   <span className="text-[9px] text-rose-400 uppercase font-black tracking-widest mt-1">{member?.relationship || ''}</span>
                 </div>
-            )) : <p className="text-white/20 text-sm italic">Nodes pending...</p>}
+            )) : <p className="text-white/20 text-sm italic">Memories pending...</p>}
           </div>
         </section>
 
@@ -117,7 +117,7 @@ const ExtractionVisualizer: React.FC<ExtractionVisualizerProps> = ({ extraction 
                     <p className="text-[9px] text-white/30 uppercase tracking-widest mt-2 font-black">{loc?.type || ''}</p>
                   </div>
                 </div>
-            )) : <p className="text-white/20 text-sm italic">Spatial nodes pending...</p>}
+            )) : <p className="text-white/20 text-sm italic">Spatial memories pending...</p>}
           </div>
         </section>
       </div>

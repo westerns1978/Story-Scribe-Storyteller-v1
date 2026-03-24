@@ -7,17 +7,10 @@ import ErrorBoundary from './components/ErrorBoundary';
 const rootElement = document.getElementById('root');
 if (!rootElement) throw new Error("Root element not found");
 
-const initServiceWorker = () => {
-    if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-            navigator.serviceWorker.register('/sw.js').catch((error) => {
-                console.warn('Service worker not available, continuing without offline support', error);
-            });
-        });
-    }
-};
-
-initServiceWorker();
+// Service worker registration intentionally disabled.
+// AI Studio's _service-worker.js proxy intercepts Gemini API calls
+// and causes 403 errors when the baked-in key is stale.
+// PWA / offline support can be re-enabled once voice is stable.
 
 ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>

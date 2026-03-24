@@ -1,109 +1,145 @@
+// services/musicService.ts
+// ============================================
+// Music selection for CinematicReveal and StorybookViewer.
+// Tracks hosted in Supabase scans/music/ — permanent, no CORS issues.
+// All Kevin MacLeod — Creative Commons Attribution 4.0
+// Credit: Kevin MacLeod (incompetech.com) Licensed under CC BY 4.0
+// Falls back to silence gracefully — never throws.
+// ============================================
 
-import { MusicTrack } from '../types';
-import { getConnectivitySettings } from './connectivityService';
-
-const PIXABAY_MUSIC_API_URL = 'https://pixabay.com/api/music/';
-
-// Internal type for pre-loaded tracks with searchable keywords
-interface BensoundTrackData extends MusicTrack {
-    keywords: string[];
+export interface MusicTrack {
+  id: number;
+  title: string;
+  artist: string;
+  duration: number;
+  url: string;
 }
 
-// 10 pre-loaded Bensound tracks that work without an API key
-const BENSOUND_TRACKS: BensoundTrackData[] = [
-    { id: 101, title: 'Memories', artist: 'Bensound', duration: 219, url: 'https://www.bensound.com/bensound-music/bensound-memories.mp3', keywords: ['nostalgic', 'emotional', 'piano', 'reflective', 'sentimental'] },
-    { id: 102, title: 'Slow Motion', artist: 'Bensound', duration: 209, url: 'https://www.bensound.com/bensound-music/bensound-slowmotion.mp3', keywords: ['calm', 'peaceful', 'cinematic', 'slow'] },
-    { id: 103, title: 'The Jazz Piano', artist: 'Bensound', duration: 169, url: 'https://www.bensound.com/bensound-music/bensound-thejazzpiano.mp3', keywords: ['jazz', 'elegant', 'vintage', 'classy', 'lounge'] },
-    { id: 104, title: 'Once Again', artist: 'Bensound', duration: 231, url: 'https://www.bensound.com/bensound-music/bensound-onceagain.mp3', keywords: ['hopeful', 'inspiring', 'uplifting', 'motivational'] },
-    { id: 105, title: 'Sweet', artist: 'Bensound', duration: 132, url: 'https://www.bensound.com/bensound-music/bensound-sweet.mp3', keywords: ['romantic', 'tender', 'love', 'gentle', 'soft'] },
-    { id: 106, title: 'Tomorrow', artist: 'Bensound', duration: 282, url: 'https://www.bensound.com/bensound-music/bensound-tomorrow.mp3', keywords: ['optimistic', 'bright', 'future', 'positive', 'corporate'] },
-    { id: 107, title: 'Tenderness', artist: 'Bensound', duration: 123, url: 'https://www.bensound.com/bensound-music/bensound-tenderness.mp3', keywords: ['soft', 'emotional', 'piano', 'gentle'] },
-    { id: 108, title: 'Acoustic Breeze', artist: 'Bensound', duration: 159, url: 'https://www.bensound.com/bensound-music/bensound-acousticbreeze.mp3', keywords: ['acoustic', 'light', 'happy', 'folk', 'breeze'] },
-    { id: 109, title: 'November', artist: 'Bensound', duration: 213, url: 'https://www.bensound.com/bensound-music/bensound-november.mp3', keywords: ['melancholic', 'reflective', 'sad', 'piano', 'november'] },
-    { id: 110, title: 'A Day To Remember', artist: 'Bensound', duration: 154, url: 'https://www.bensound.com/bensound-music/bensound-adaytoremember.mp3', keywords: ['cinematic', 'epic', 'orchestral', 'inspiring', 'motivational'] },
+interface InternalTrack extends MusicTrack {
+  keywords: string[];
+}
+
+const BASE = 'https://ldzzlndsspkyohvzfiiu.supabase.co/storage/v1/object/public/scans/music';
+
+const CURATED_TRACKS: InternalTrack[] = [
+  {
+    id: 1,
+    title: 'Heartwarming',
+    artist: 'Kevin MacLeod',
+    duration: 195,
+    url: `${BASE}/Heartwarming.mp3`,
+    keywords: ['hopeful', 'inspiring', 'uplifting', 'warm', 'family', 'love', 'joyful', 'bright', 'tender'],
+  },
+  {
+    id: 2,
+    title: 'Slow Burn',
+    artist: 'Kevin MacLeod',
+    duration: 180,
+    url: `${BASE}/Slow%20Burn.mp3`,
+    keywords: ['calm', 'peaceful', 'cinematic', 'slow', 'contemplative', 'reflective', 'nostalgic', 'memory', 'emotional'],
+  },
+  {
+    id: 3,
+    title: 'Autumn Day',
+    artist: 'Kevin MacLeod',
+    duration: 215,
+    url: `${BASE}/Autumn%20Day.mp3`,
+    keywords: ['melancholic', 'reflective', 'sad', 'loss', 'bittersweet', 'somber', 'passing', 'grief', 'solemn'],
+  },
+  {
+    id: 4,
+    title: 'Crossing the Divide',
+    artist: 'Kevin MacLeod',
+    duration: 200,
+    url: `${BASE}/Crossing%20the%20Divide.mp3`,
+    keywords: ['intimate', 'gentle', 'soft', 'quiet', 'tender', 'romantic', 'personal', 'spiritual', 'sacred'],
+  },
+  {
+    id: 5,
+    title: 'Arcadia',
+    artist: 'Kevin MacLeod',
+    duration: 190,
+    url: `${BASE}/Arcadia.mp3`,
+    keywords: ['cinematic', 'epic', 'orchestral', 'inspiring', 'triumph', 'courageous', 'resilient', 'dramatic', 'war', 'service'],
+  },
+  {
+    id: 6,
+    title: 'Long Road Ahead',
+    artist: 'Kevin MacLeod',
+    duration: 220,
+    url: `${BASE}/Long%20Road%20Ahead.mp3`,
+    keywords: ['journey', 'adventure', 'travel', 'determined', 'building', 'work', 'life', 'biographical', 'saga'],
+  },
+  {
+    id: 7,
+    title: 'Enchanted Journey',
+    artist: 'Kevin MacLeod',
+    duration: 205,
+    url: `${BASE}/Enchanted%20Journey.mp3`,
+    keywords: ['warm', 'loving', 'pet', 'gentle', 'companion', 'tender', 'family', 'playful', 'light'],
+  },
 ];
 
-/**
- * Filters the pre-loaded Bensound tracks by keywords.
- * @param query The search query string.
- * @returns An array of matching MusicTrack objects.
- */
-const searchBensound = (query: string): MusicTrack[] => {
-    if (!query) return [];
-    const queryKeywords = query.toLowerCase().split(/[\s,]+/).filter(Boolean);
-    if (queryKeywords.length === 0) {
-        return [];
-    }
+// ─── Keyword scoring ──────────────────────────────────────────────────────────
 
-    const results = BENSOUND_TRACKS.filter(track => {
-        const trackText = `${track.title.toLowerCase()} ${track.keywords.join(' ')}`;
-        return queryKeywords.some(kw => trackText.includes(kw));
-    });
+function scoreTrack(track: InternalTrack, queryWords: string[]): number {
+  const trackText = `${track.title} ${track.keywords.join(' ')}`.toLowerCase();
+  return queryWords.filter(w => trackText.includes(w)).length;
+}
 
-    // Strip the internal `keywords` property before returning
-    return results.map(({ keywords, ...rest }) => rest);
-};
+function pickBestTrack(suggestion: string): MusicTrack {
+  const words = suggestion.toLowerCase().split(/[\s,_-]+/).filter(w => w.length > 2);
+  if (words.length === 0) return stripKeywords(CURATED_TRACKS[0]);
 
-/**
- * Searches the Pixabay API for music tracks.
- * @param suggestion The search query string.
- * @param apiKey The Pixabay API key.
- * @returns A promise that resolves to an array of MusicTrack objects.
- */
-const searchPixabay = async (suggestion: string, apiKey: string): Promise<MusicTrack[]> => {
-    const keywords = suggestion.trim().split(' ').join('+');
-    const url = `${PIXABAY_MUSIC_API_URL}?key=${apiKey}&q=${encodeURIComponent(keywords)}&per_page=10`;
+  const scored = CURATED_TRACKS.map(t => ({ track: t, score: scoreTrack(t, words) }));
+  scored.sort((a, b) => b.score - a.score);
 
-    try {
-        const response = await fetch(url);
-        
-        // If 404 or other error, return empty to fallback gracefully without logging explicit console error
-        if (!response.ok) {
-            return []; 
-        }
+  // If no match, default to Slow Burn — works for almost any life story
+  if (scored[0].score === 0) {
+    return stripKeywords(CURATED_TRACKS[1]); // Slow Burn
+  }
+  return stripKeywords(scored[0].track);
+}
 
-        const data = await response.json();
+function stripKeywords(t: InternalTrack): MusicTrack {
+  const { keywords, ...rest } = t;
+  return rest;
+}
 
-        if (data.hits && data.hits.length > 0) {
-            return data.hits.map((hit: any): MusicTrack => ({
-                id: hit.id,
-                title: hit.title,
-                artist: hit.user.name,
-                duration: hit.duration,
-                url: hit.previewURL,
-            }));
-        }
-    } catch (error) {
-        // Suppress network errors for Pixabay to allow silent fallback
-        return [];
-    }
+// ─── Public API ───────────────────────────────────────────────────────────────
 
-    return [];
-};
+export async function findMusicFromSuggestion(suggestion: string): Promise<MusicTrack[]> {
+  // All tracks are on our own Supabase CDN — no need to verify URLs
+  // Just pick the best match and return it
+  const best = pickBestTrack(suggestion);
+  return [best];
+}
 
-/**
- * Finds music based on a suggestion, prioritizing pre-loaded tracks,
- * then falling back to Pixabay API, and finally returning all pre-loaded tracks.
- * This function is designed to never throw an error and always return music.
- * @param suggestion A string containing keywords for the music search.
- * @returns A promise that resolves to an array of MusicTrack objects.
- */
-export const findMusicFromSuggestion = async (suggestion: string): Promise<MusicTrack[]> => {
-    // 1. First, search the pre-loaded Bensound tracks for instant results.
-    const bensoundResults = searchBensound(suggestion);
-    if (bensoundResults.length > 0) {
-        return bensoundResults;
-    }
+export function toneToMusicQuery(tone: string): string {
+  const map: Record<string, string> = {
+    joyful: 'uplifting warm family love',
+    hopeful: 'hopeful inspiring gentle warm',
+    melancholic: 'melancholic reflective loss bittersweet',
+    triumphant: 'cinematic epic orchestral inspiring triumph',
+    tender: 'tender soft gentle intimate quiet',
+    reflective: 'reflective nostalgic emotional memory',
+    dramatic: 'dramatic cinematic epic',
+    peaceful: 'peaceful calm contemplative slow',
+    nostalgic: 'nostalgic memory reflective emotional',
+    spiritual: 'spiritual sacred gentle intimate',
+    somber: 'melancholic loss somber passing',
+    warm: 'warm family love uplifting tender',
+    courageous: 'cinematic epic orchestral triumph courageous',
+    resilient: 'inspiring journey determined long road',
+    loving: 'warm loving tender family gentle',
+    adventurous: 'journey adventure long road saga',
+    bittersweet: 'melancholic reflective bittersweet loss',
+    pet: 'enchanted gentle warm loving companion',
+  };
 
-    // 2. If no pre-loaded tracks match, try the Pixabay API as a backup.
-    const { pixabayApiKey } = getConnectivitySettings();
-    if (pixabayApiKey) {
-        const pixabayResults = await searchPixabay(suggestion, pixabayApiKey);
-        if (pixabayResults.length > 0) {
-            return pixabayResults;
-        }
-    }
-
-    // 3. If both searches fail or return no results, return all Bensound tracks as a reliable fallback.
-    return BENSOUND_TRACKS.map(({ keywords, ...rest }) => rest);
-};
+  const lower = tone.toLowerCase();
+  for (const [key, query] of Object.entries(map)) {
+    if (lower.includes(key)) return query;
+  }
+  return 'reflective nostalgic emotional memory';
+}

@@ -1,166 +1,153 @@
 import React, { useState, useEffect } from 'react';
-import { GoogleGenAI } from "@google/genai";
 import XMarkIcon from './icons/XMarkIcon';
 import GlobeAmericasIcon from './icons/GlobeAmericasIcon';
 import ClockIcon from './icons/ClockIcon';
 import MusicNoteIcon from './icons/MusicNoteIcon';
-import ExternalLinkIcon from './icons/ExternalLinkIcon';
+
+// Routes through story-cascade edge function — no API key in client
+const STORY_CASCADE_URL = 'https://ldzzlndsspkyohvzfiiu.supabase.co/functions/v1/story-cascade';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxkenpsbmRzc3BreW9odnpmaWl1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE3MTEzMDUsImV4cCI6MjA3NzI4NzMwNX0.SK2Y7XMzeGQoVMq9KAmEN1vwy7RjtbIXZf6TyNneFnI';
 
 interface TimeCapsuleModalProps {
-    isOpen: boolean;
-    onClose: () => void;
-    year: string;
-    location?: string;
+  isOpen: boolean;
+  onClose: () => void;
+  year: string;
+  location?: string;
 }
 
 interface TimeCapsuleData {
-    news: string[];
-    culture: string[];
-    prices: string[];
-    music: string[];
-    context: string;
+  news: string[];
+  culture: string[];
+  prices: string[];
+  music: string[];
+  context: string;
+}
+
+async function fetchTimeCapsule(year: string, location?: string): Promise<TimeCapsuleData> {
+  const prompt = `You are a historical researcher. Provide a time capsule snapshot for the year ${year}${location ? ` in ${location}` : ''}.
+
+Return ONLY valid JSON with this exact structure:
+{
+  "news": ["3 major world headlines from ${year}"],
+  "culture": ["3 pop culture facts from ${year}"],
+  "music": ["3 popular songs from ${year}"],
+  "prices": ["3 cost-of-living examples from ${year} e.g. 'Gallon of milk: $0.89'"],
+  "context": "A 2-sentence description of what daily life felt like in ${year}"
+}
+
+Be historically accurate. Only return the JSON, no other text.`;
+
+  const res = await fetch(STORY_CASCADE_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      apikey: SUPABASE_ANON_KEY,
+    },
+    body: JSON.stringify({
+      action: 'connie_chat',
+      system_prompt: 'You are a precise historical researcher. Always respond with valid JSON only.',
+      messages: [{ role: 'user', parts: [{ text: prompt }] }],
+      subject: `time capsule ${year}`,
+    }),
+  });
+
+  if (!res.ok) throw new Error(`Failed: ${res.status}`);
+  const data = await res.json();
+  const text = data.text || '';
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('No JSON in response');
+  return JSON.parse(match[0]);
 }
 
 const TimeCapsuleModal: React.FC<TimeCapsuleModalProps> = ({ isOpen, onClose, year, location }) => {
-    const [loading, setLoading] = useState(true);
-    const [data, setData] = useState<TimeCapsuleData | null>(null);
-    const [groundingChunks, setGroundingChunks] = useState<any[]>([]);
-    const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [data, setData] = useState<TimeCapsuleData | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-    useEffect(() => {
-        if (isOpen && year) {
-            fetchContext();
-        }
-    }, [isOpen, year]);
+  useEffect(() => {
+    if (!isOpen || !year) return;
+    setLoading(true);
+    setError(null);
+    setData(null);
+    fetchTimeCapsule(year, location)
+      .then(setData)
+      .catch(err => { console.error('TimeCapsule:', err); setError('Could not reach historical archives. Try again.'); })
+      .finally(() => setLoading(false));
+  }, [isOpen, year, location]);
 
-    const fetchContext = async () => {
-        setLoading(true);
-        setError(null);
-        setData(null);
-        setGroundingChunks([]);
+  if (!isOpen) return null;
 
-        try {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-            // Gemini API rules: DO NOT use responseMimeType: 'application/json' with googleSearch tool.
-            // We will request JSON in the prompt and parse the text output.
-            const prompt = `Search for historical records from ${year}${location ? ` in ${location}` : ''}. 
-            Construct a Time Capsule JSON object with:
-            "news": 3 actual major headlines from that exact year.
-            "culture": 3 real pop culture facts from then.
-            "music": 3 top songs from ${year}.
-            "prices": 3 real-world cost-of-living examples from ${year}.
-            "context": 2-sentence vibe check.
-            Return ONLY the JSON block.`;
-
-            const response = await ai.models.generateContent({
-                model: 'gemini-2.0-flash',
-                contents: prompt,
-                config: { 
-                    tools: [{ googleSearch: {} }] 
-                }
-            });
-
-            if (response.text) {
-                // Attempt to find and parse JSON from the response text
-                const text = response.text;
-                const jsonMatch = text.match(/\{[\s\S]*\}/);
-                if (jsonMatch) {
-                    setData(JSON.parse(jsonMatch[0]));
-                } else {
-                    throw new Error("Invalid format received from historical archives.");
-                }
-                setGroundingChunks(response.candidates?.[0]?.groundingMetadata?.groundingChunks || []);
-            }
-        } catch (err) {
-            console.error("Time Capsule Search Error:", err);
-            setError("Search grounding failed to reach historical nodes.");
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    if (!isOpen) return null;
-
-    return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[60] p-4" onClick={onClose}>
-            <div className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
-                <header className="bg-gradient-to-r from-blue-100 to-indigo-100 dark:from-slate-800 dark:to-slate-900 p-6 flex justify-between items-start flex-shrink-0">
-                    <div>
-                        <div className="flex items-center gap-2 text-blue-700 dark:text-blue-400 mb-2">
-                            <ClockIcon className="w-5 h-5" />
-                            <span className="text-sm font-bold uppercase tracking-wider">Search-Grounded Records</span>
-                        </div>
-                        <h2 className="text-4xl font-bold text-slate-900 dark:text-white font-serif">{year}</h2>
-                    </div>
-                    <button onClick={onClose} className="p-2 bg-white/50 dark:bg-slate-800/50 rounded-full hover:bg-white dark:hover:bg-slate-700 transition-colors">
-                        <XMarkIcon className="w-6 h-6 text-slate-600 dark:text-slate-300" />
-                    </button>
-                </header>
-
-                <main className="flex-1 overflow-y-auto p-6">
-                    {loading ? (
-                        <div className="flex flex-col items-center justify-center py-20 space-y-4">
-                            <GlobeAmericasIcon className="w-12 h-12 text-blue-500 animate-spin" />
-                            <p className="text-slate-500 font-mono tracking-widest uppercase text-xs">Consulting_Historical_Archives...</p>
-                        </div>
-                    ) : error ? (
-                        <div className="text-center text-red-500 py-8">{error}</div>
-                    ) : data ? (
-                        <div className="space-y-8">
-                            <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl border border-blue-100 dark:border-blue-900/30">
-                                <p className="text-blue-900 dark:text-blue-100 italic text-lg font-serif leading-relaxed">"{data.context}"</p>
-                            </div>
-
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                                <Section title="Headlines" items={data.news} color="blue" />
-                                <Section title="Pop Culture" items={data.culture} color="purple" />
-                                <Section title="Top Songs" items={data.music} color="red" icon={<MusicNoteIcon className="w-4 h-4 inline mr-1"/>} />
-                                <Section title="Cost of Living" items={data.prices} color="green" />
-                            </div>
-
-                            {groundingChunks.length > 0 && (
-                                <div className="mt-8 pt-6 border-t border-slate-200 dark:border-slate-800">
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Verification Sources</p>
-                                    <div className="flex flex-wrap gap-2">
-                                        {groundingChunks.map((chunk, idx) => (
-                                            <a key={idx} href={chunk.web?.uri} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 rounded-full text-xs text-slate-600 dark:text-slate-400 hover:text-blue-600 transition-colors">
-                                                <ExternalLinkIcon className="w-3 h-3" />
-                                                <span className="max-w-[140px] truncate">{chunk.web?.title}</span>
-                                            </a>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    ) : null}
-                </main>
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[200] p-4" onClick={onClose}>
+      <div
+        className="w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+        style={{ background: 'linear-gradient(160deg, #1A0F07 0%, #0D0B0A 100%)', border: '1px solid rgba(196,151,59,0.2)' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <header className="p-6 flex justify-between items-start flex-shrink-0" style={{ borderBottom: '1px solid rgba(196,151,59,0.1)' }}>
+          <div>
+            <div className="flex items-center gap-2 mb-2" style={{ color: 'rgba(196,151,59,0.6)' }}>
+              <ClockIcon className="w-4 h-4" />
+              <span className="text-[10px] font-black uppercase tracking-[0.4em]">Time Capsule</span>
             </div>
-        </div>
-    );
+            <h2 className="text-5xl font-display font-black text-white tracking-tight">{year}</h2>
+            {location && <p className="text-white/30 font-serif italic text-sm mt-1">{location}</p>}
+          </div>
+          <button onClick={onClose} className="p-2 rounded-full hover:bg-white/10 transition-colors">
+            <XMarkIcon className="w-5 h-5 text-white/40" />
+          </button>
+        </header>
+
+        <main className="flex-1 overflow-y-auto p-6">
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-16 space-y-4">
+              <GlobeAmericasIcon className="w-10 h-10 animate-spin" style={{ color: 'rgba(196,151,59,0.5)' }} />
+              <p className="text-white/30 font-serif italic text-sm">Consulting historical archives...</p>
+            </div>
+          ) : error ? (
+            <div className="text-center py-8">
+              <p className="text-red-400/70 font-serif italic text-sm">{error}</p>
+              <button onClick={() => { setLoading(true); fetchTimeCapsule(year, location).then(setData).catch(() => setError('Try again later.')).finally(() => setLoading(false)); }} className="mt-4 px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-widest text-white/40 hover:text-white/70 border border-white/10 transition-all">
+                Try Again
+              </button>
+            </div>
+          ) : data ? (
+            <div className="space-y-6">
+              {/* Context vibe */}
+              <div className="rounded-2xl p-5" style={{ background: 'rgba(196,151,59,0.08)', border: '1px solid rgba(196,151,59,0.15)' }}>
+                <p className="font-serif italic text-base leading-relaxed" style={{ color: 'rgba(245,236,215,0.8)' }}>"{data.context}"</p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Section title="Headlines" items={data.news} icon="📰" />
+                <Section title="Pop Culture" items={data.culture} icon="🎭" />
+                <Section title="Top Songs" items={data.music} icon="🎵" />
+                <Section title="Cost of Living" items={data.prices} icon="💰" />
+              </div>
+            </div>
+          ) : null}
+        </main>
+      </div>
+    </div>
+  );
 };
 
-const Section: React.FC<{ title: string; items: string[]; color: 'blue' | 'purple' | 'green' | 'red'; icon?: React.ReactNode }> = ({ title, items, color, icon }) => {
-    const classes = {
-        blue: 'text-blue-600 bg-blue-50 border-blue-100',
-        purple: 'text-purple-600 bg-purple-50 border-purple-100',
-        green: 'text-green-600 bg-green-50 border-green-100',
-        red: 'text-red-600 bg-red-50 border-red-100',
-    };
-    return (
-        <div className="p-4 rounded-xl border bg-slate-50/50 dark:bg-slate-800/30">
-            <h3 className={`text-xs font-bold uppercase tracking-widest mb-3 flex items-center ${color === 'blue' ? 'text-blue-500' : color === 'red' ? 'text-red-500' : color === 'green' ? 'text-green-500' : 'text-purple-500'}`}>
-                {icon} {title}
-            </h3>
-            <ul className="space-y-2">
-                {(items || []).map((item, i) => (
-                    <li key={i} className="flex items-start gap-2 text-slate-700 dark:text-slate-300 text-sm">
-                        <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-slate-600 flex-shrink-0"></span>
-                        <span className="leading-tight">{item}</span>
-                    </li>
-                ))}
-            </ul>
-        </div>
-    );
-}
+const Section: React.FC<{ title: string; items: string[]; icon: string }> = ({ title, items, icon }) => (
+  <div className="rounded-2xl p-4" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+    <h3 className="text-[10px] font-black uppercase tracking-[0.3em] mb-3 flex items-center gap-2" style={{ color: 'rgba(196,151,59,0.7)' }}>
+      <span>{icon}</span>{title}
+    </h3>
+    <ul className="space-y-2">
+      {(items || []).map((item, i) => (
+        <li key={i} className="flex items-start gap-2 text-sm font-serif leading-snug" style={{ color: 'rgba(245,236,215,0.6)' }}>
+          <span className="mt-1.5 w-1 h-1 rounded-full flex-shrink-0" style={{ background: 'rgba(196,151,59,0.4)' }} />
+          {item}
+        </li>
+      ))}
+    </ul>
+  </div>
+);
 
 export default TimeCapsuleModal;

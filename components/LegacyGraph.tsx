@@ -100,8 +100,8 @@ export const LegacyGraph: React.FC<LegacyGraphProps> = ({ stories, isOpen, onClo
                         <GalaxyIcon className="w-8 h-8 text-gemynd-agedGold" />
                     </div>
                     <div>
-                        <h2 className="text-3xl font-display font-black text-white tracking-tighter">The Legacy Graph</h2>
-                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.5em] mt-1">Cross-Node Family Intelligence</p>
+                        <h2 className="text-3xl font-display font-black text-white tracking-tighter">The Story Constellation</h2>
+                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.5em] mt-1">Family Memory Connections</p>
                     </div>
                 </div>
                 <button onClick={onClose} className="p-4 hover:bg-white/10 rounded-full text-white/40"><XMarkIcon className="w-8 h-8"/></button>
@@ -178,7 +178,7 @@ export const LegacyGraph: React.FC<LegacyGraphProps> = ({ stories, isOpen, onClo
                         </div>
                         <h3 className="text-2xl font-display font-bold text-white mb-2">{selectedNode.label}</h3>
                         <p className="text-slate-400 text-sm font-serif italic mb-6">
-                            {selectedNode.type === 'story' ? 'Primary legacy record node in the family constellation.' : 'Shared ancestral identifier linking multiple archives.'}
+                            {selectedNode.type === 'story' ? 'Primary story record in the family constellation.' : 'Shared ancestral connection linking multiple archives.'}
                         </p>
                         
                         {selectedNode.storyRef && (

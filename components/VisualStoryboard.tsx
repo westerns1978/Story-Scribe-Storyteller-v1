@@ -100,8 +100,8 @@ const VisualStoryboard: React.FC<VisualStoryboardProps> = ({
     <div className="space-y-6">
       <div className="flex justify-between items-center px-1">
           <div>
-            <h3 className="text-2xl lg:text-4xl font-display font-black text-slate-900 dark:text-white tracking-tight">Cinematic Storyboard</h3>
-            <p className="text-[10px] font-bold text-slate-400 dark:text-white/30 uppercase tracking-[0.4em] mt-1">Directorial Sequence</p>
+            <h3 className="text-2xl lg:text-4xl font-display font-black text-heritage-ink tracking-tight">Cinematic Storyboard</h3>
+            <p className="text-[10px] font-bold text-heritage-inkMuted uppercase tracking-[0.4em] mt-1">Directorial Sequence</p>
           </div>
           <div className="hidden sm:flex items-center gap-2 px-4 py-1.5 bg-amber-500/10 rounded-full border border-amber-500/20">
               <SparklesIcon className="w-4 h-4 text-amber-500" />
@@ -109,10 +109,10 @@ const VisualStoryboard: React.FC<VisualStoryboardProps> = ({
           </div>
       </div>
       
-      <div className="relative group obsidian-card p-8 rounded-[3.5rem] border border-white/5 bg-black/40">
+      <div className="relative group bg-heritage-parchment/40 border border-heritage-parchment rounded-[2rem] p-6">
         <button
           onClick={() => handleScroll('left')}
-          className="absolute left-4 top-1/2 -translate-y-1/2 z-10 p-4 bg-black/60 backdrop-blur shadow-2xl hover:bg-black rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity border border-white/10"
+          className="absolute left-4 top-1/2 -translate-y-1/2 z-10 p-3 bg-heritage-cream/90 backdrop-blur shadow-lg hover:bg-heritage-burgundy hover:text-white rounded-full text-heritage-ink opacity-0 group-hover:opacity-100 transition-all border border-heritage-parchment"
         >
           <ChevronLeftIcon className="w-6 h-6" />
         </button>
@@ -214,7 +214,7 @@ const VisualStoryboard: React.FC<VisualStoryboardProps> = ({
         
         <button
           onClick={() => handleScroll('right')}
-          className="absolute right-4 top-1/2 -translate-y-1/2 z-10 p-4 bg-black/60 backdrop-blur shadow-2xl hover:bg-black rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity border border-white/10"
+          className="absolute right-4 top-1/2 -translate-y-1/2 z-10 p-3 bg-heritage-cream/90 backdrop-blur shadow-lg hover:bg-heritage-burgundy hover:text-white rounded-full text-heritage-ink opacity-0 group-hover:opacity-100 transition-all border border-heritage-parchment"
         >
           <ChevronRightIcon className="w-6 h-6" />
         </button>

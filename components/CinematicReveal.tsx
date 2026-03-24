@@ -1,333 +1,683 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ActiveStory } from '../types';
-import SparklesIcon from './icons/SparklesIcon';
-import ShareIcon from './icons/ShareIcon';
-import BookOpenIcon from './icons/BookOpenIcon';
-import GlobeAmericasIcon from './icons/GlobeAmericasIcon';
-import StorybookViewer from './StorybookViewer';
-import { translateContent } from '../services/api';
+import { findMusicFromSuggestion, toneToMusicQuery } from '../services/musicService';
+import { narrateText, playAudioBuffer } from '../services/narrationService';
 
 interface CinematicRevealProps {
   story: ActiveStory;
   onRestart: () => void;
+  onShare?: () => void;
+  onViewShelf?: () => void;
+  narratorVoice?: 'Kore' | 'Fenrir';
 }
 
-type Phase = 'gate' | 'title' | 'journey' | 'whisper' | 'finale';
+// ── Derive music query from story tone/mood via musicService ──────────────────
+function getMusicQueryForStory(story: ActiveStory): string {
+  const tone = (story.extraction?.emotional_journey?.overall_tone || '').toLowerCase();
+  const mq   = ((story as any).musicQuery || '').toLowerCase();
+  return toneToMusicQuery(tone || mq || 'nostalgic');
+}
 
-const CinematicReveal: React.FC<CinematicRevealProps> = ({ story, onRestart }) => {
-  const [phase, setPhase] = useState<Phase>('gate');
-  const [hasStarted, setHasStarted] = useState(false);
-  const [currentBeatIndex, setCurrentBeatIndex] = useState(0);
-  const [isShared, setIsShared] = useState(false);
-  const [targetLanguage, setTargetLanguage] = useState('English');
-  const [isTranslating, setIsTranslating] = useState(false);
-  const [translatedNarrative, setTranslatedNarrative] = useState<Record<number, string>>({});
-  const [isStorybookOpen, setIsStorybookOpen] = useState(false);
-  
-  const audioRef = useRef<HTMLAudioElement>(null);
-  
-  const storyBeats = useMemo(() => {
-    return story?.storyboard?.story_beats || [];
+
+
+// ── Ken Burns — randomized origin per image for authentic documentary feel ────
+const KB_ORIGINS = [
+  'center center', 'top left', 'top right', 'bottom left', 'bottom right',
+  'center top', 'center bottom', '30% 40%', '70% 30%', '40% 70%',
+];
+
+function getKBOrigin(index: number): string {
+  return KB_ORIGINS[index % KB_ORIGINS.length];
+}
+
+
+
+// ── Build scenes from story data ───────────────────────────────────────────────
+interface Scene {
+  image: string;
+  caption: string;
+  narration: string;
+  beatTitle: string;
+  anchorPhoto?: { url: string; era?: string; caption?: string };
+}
+
+function buildScenes(story: ActiveStory): Scene[] {
+  const beats = story.storyboard?.story_beats || [];
+  const images = story.generatedImages || [];
+
+  return beats.map((beat: any, i: number) => {
+    // Match by .index field first (set by edge fn), then fall back to positional
+    const img = images.find((im: any) => im.index === i || im.image_index === i)
+      || images[i];
+    return {
+      image: img?.image_url || '',
+      caption: beat.beat_title || `Chapter ${i + 1}`,
+      narration: beat.narrative_chunk || '',
+      beatTitle: beat.beat_title || '',
+      anchorPhoto: beat.anchor_photo || null,
+    };
+  }).filter(s => s.narration);
+}
+
+// ── Main component ─────────────────────────────────────────────────────────────
+const CinematicReveal: React.FC<CinematicRevealProps> = ({
+  story, onRestart, narratorVoice = 'Kore', onShare, onViewShelf,
+}) => {
+  const scenes = buildScenes(story);
+  const totalScenes = Math.max(scenes.length, 1);
+
+  const [currentScene, setCurrentScene] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const [narrationReady, setNarrationReady] = useState(false);
+  const [loadingNarration, setLoadingNarration] = useState(false);
+  const [preparingScene, setPreparingScene] = useState(false);
+  const [showControls, setShowControls] = useState(true);
+  const [sceneProgress, setSceneProgress] = useState(0);
+  const [allDone, setAllDone] = useState(false);
+  const [showNarrationText, setShowNarrationText] = useState(false);
+  const narrationTextTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const musicRef = useRef<HTMLAudioElement | null>(null);
+  const sceneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const controlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Active narration source — kept so we can stop it on pause/skip
+  const activeSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const activeAudioCtxRef = useRef<AudioContext | null>(null);
+  const pausedAtRef = useRef<number>(0);
+  const sceneStartTimeRef = useRef<number>(0);
+
+  // Show narration text as soon as scene starts playing, hide when scene advances
+  // Text stays visible for the full duration of narration — no hard timer cutoff
+  useEffect(() => {
+    if (!isPlaying) { setShowNarrationText(false); return; }
+    setShowNarrationText(false);
+    if (narrationTextTimerRef.current) clearTimeout(narrationTextTimerRef.current);
+    // Fade in after 0.6s — gives Ken Burns animation a moment to settle
+    narrationTextTimerRef.current = setTimeout(() => setShowNarrationText(true), 600);
+    return () => { if (narrationTextTimerRef.current) clearTimeout(narrationTextTimerRef.current); };
+  }, [currentScene, isPlaying]);
+
+  // Music URL fetched async from musicService on mount — stored in ref
+  const musicUrlRef = useRef<string>('');
+  useEffect(() => {
+    // Pre-fetch music URL via musicService (Kevin MacLeod curated tracks, no API key)
+    const query = getMusicQueryForStory(story);
+    findMusicFromSuggestion(query).then(tracks => {
+      if (tracks[0]?.url) musicUrlRef.current = tracks[0].url;
+    }).catch(() => { /* silent — music is non-critical */ });
+    // Clean up audio when story changes
+    if (musicRef.current) { musicRef.current.pause(); musicRef.current.src = ''; musicRef.current = null; }
   }, [story]);
 
-  const evocativeNarrations = useMemo(() => {
-      const items = (story?.extraction?.timeline || [])
-        .map(t => (t as any).evocative_narration)
-        .filter(Boolean);
-      return items.length > 0 ? items : [
-        "The memories play like an old film in my mind...",
-        "I can still hear the echoes of that time...",
-        "Some moments carry more weight than others...",
-        "It's a beautiful thing, to be remembered."
-      ];
-  }, [story]);
-
-  const storyUrl = useMemo(() => {
-    if (!story?.sessionId) return '';
-    return `${window.location.origin}?story=${story.sessionId}`;
-  }, [story?.sessionId]);
-
-  const ambientTrack = useMemo(() => {
-    if (story?.background_music_url) return story.background_music_url;
-    return 'https://www.bensound.com/bensound-music/bensound-memories.mp3'; 
-  }, [story]);
-
-  const handleGateEntry = () => {
-      setPhase('title');
-      if (audioRef.current) {
-          audioRef.current.volume = 0;
-          audioRef.current.play().then(() => {
-              let vol = 0;
-              const swell = setInterval(() => {
-                  if (vol < 0.4) {
-                      vol += 0.05;
-                      if (audioRef.current) audioRef.current.volume = vol;
-                  } else {
-                      clearInterval(swell);
-                  }
-              }, 200);
-          }).catch(e => console.warn("Audio node blocked", e));
+  const fadeMusic = useCallback((targetVol: number, ms = 1500) => {
+    if (!musicRef.current) return;
+    const audio = musicRef.current;
+    const startVol = audio.volume;
+    const step = (targetVol - startVol) / (ms / 50);
+    const interval = setInterval(() => {
+      audio.volume = Math.max(0, Math.min(1, audio.volume + step));
+      if (Math.abs(audio.volume - targetVol) < 0.02) {
+        audio.volume = targetVol;
+        clearInterval(interval);
       }
-  };
+    }, 50);
+  }, []);
 
-  const handleStart = () => {
-    setHasStarted(true);
-    const timer = setTimeout(() => setPhase('journey'), 4000);
-    return () => clearTimeout(timer);
-  };
+  // narrationCache now stores { audioBuffer, audioContext } objects
+  const narrationCache = useRef<Record<number, { audioBuffer: AudioBuffer; audioContext: AudioContext }>>({});
 
-  const handleShare = async () => {
-    if (!storyUrl) return;
-    try {
-        await navigator.clipboard.writeText(storyUrl);
-        setIsShared(true);
-        setTimeout(() => setIsShared(false), 3000);
-    } catch (e) {
-        console.error("Family uplink node failed:", e);
-    }
-  };
+  const fetchNarration = useCallback(async (sceneIdx: number): Promise<{ audioBuffer: AudioBuffer; audioContext: AudioContext } | null> => {
+    // Check in-memory cache first
+    if (narrationCache.current[sceneIdx]) return narrationCache.current[sceneIdx];
 
-  const handleLanguageChange = async (lang: string) => {
-    setTargetLanguage(lang);
-    if (lang === 'English') return;
-
-    setIsTranslating(true);
-    try {
-        const currentBeatText = storyBeats[currentBeatIndex]?.narrative_chunk;
-        if (currentBeatText) {
-            const translation = await translateContent(currentBeatText, lang);
-            setTranslatedNarrative(prev => ({ ...prev, [currentBeatIndex]: translation }));
+    // ── CHECK PRE-BAKED BEAT AUDIO (generated at story creation time) ────────
+    // beat_index -1 is the opening line, 0+ are beats
+    const beatAudio = (story as any).beatAudio || [];
+    const cached = beatAudio.find((b: any) => b.beat_index === sceneIdx || b.beat_index === sceneIdx - 1);
+    if (cached?.audio_base64) {
+      try {
+        const audioCtx = new AudioContext({ sampleRate: 24000 });
+        // Convert PCM base64 to AudioBuffer
+        const binary = atob(cached.audio_base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        // PCM s16le → float32
+        const samples = bytes.length / 2;
+        const float32 = new Float32Array(samples);
+        const view = new DataView(bytes.buffer);
+        for (let i = 0; i < samples; i++) {
+          float32[i] = view.getInt16(i * 2, true) / 32768.0;
         }
-    } catch (e) {
-        console.error("Translation failure");
-    } finally {
-        setIsTranslating(false);
+        const audioBuffer = audioCtx.createBuffer(1, samples, 24000);
+        audioBuffer.getChannelData(0).set(float32);
+        const result = { audioBuffer, audioContext: audioCtx };
+        narrationCache.current[sceneIdx] = result;
+        console.log(`[CinematicReveal] Using pre-baked audio for scene ${sceneIdx}`);
+        return result;
+      } catch (e) {
+        console.warn('[CinematicReveal] Pre-baked audio decode failed, falling back to live TTS:', e);
+      }
     }
-  };
+
+    // ── LIVE TTS FALLBACK ────────────────────────────────────────────────────
+    const text = scenes[sceneIdx]?.narration;
+    if (!text) return null;
+    try {
+      const result = await narrateText(text.slice(0, 800), narratorVoice);
+      if (!result) return null;
+      narrationCache.current[sceneIdx] = result;
+      return result;
+    } catch { return null; }
+  }, [scenes, narratorVoice, story]);
+
+  const playScene = useCallback(async (idx: number) => {
+    if (idx >= totalScenes) {
+      setAllDone(true);
+      setIsPlaying(false);
+      fadeMusic(0, 3000);
+      return;
+    }
+
+    setCurrentScene(idx);
+    setSceneProgress(0);
+    setPreparingScene(false); // Scene is now showing — clear the preparing overlay
+    if (sceneTimerRef.current) clearTimeout(sceneTimerRef.current);
+    if (progressTimerRef.current) clearInterval(progressTimerRef.current);
+
+    // (narration stopped via playAudioBuffer stop fn — no ref needed)
+
+    // Fetch narration for this scene + prefetch next
+    setLoadingNarration(true);
+    const [narResult] = await Promise.all([
+      fetchNarration(idx),
+      idx + 1 < totalScenes ? fetchNarration(idx + 1) : Promise.resolve(null),
+    ]).catch(() => [null, null]);
+    setLoadingNarration(false);
+    setNarrationReady(!!narResult);
+
+    let sceneDuration = 8000; // fallback duration
+
+    if (narResult) {
+      // Duck music, play narration via narrationService
+      if (musicRef.current && !musicRef.current.paused) fadeMusic(0.08, 800);
+      let stopNarration: (() => void) | null = null;
+      await new Promise<void>(resolve => {
+        stopNarration = playAudioBuffer(narResult.audioBuffer, narResult.audioContext, {
+          onEnded: resolve,
+          gainValue: 1.0,
+        });
+        // Track the active context so pause/stop works
+        activeAudioCtxRef.current = narResult.audioContext;
+        sceneStartTimeRef.current = narResult.audioContext.currentTime;
+        // Safety timeout — advance anyway after 60s if audio hangs
+        setTimeout(resolve, 60000);
+      });
+      activeAudioCtxRef.current = null;
+      if (stopNarration) { try { (stopNarration as () => void)(); } catch {} }
+      if (musicRef.current && !musicRef.current.paused) fadeMusic(0.25, 1000);
+      sceneDuration = 2000;
+    }
+
+    // Progress bar animation
+    const duration = narResult ? (narResult.audioBuffer.duration || 8) * 1000 + 2000 : sceneDuration;
+    let elapsed = 0;
+    const tick = 100;
+    progressTimerRef.current = setInterval(() => {
+      elapsed += tick;
+      setSceneProgress(Math.min(100, (elapsed / duration) * 100));
+    }, tick);
+
+    sceneTimerRef.current = setTimeout(() => {
+      if (progressTimerRef.current) clearInterval(progressTimerRef.current);
+      playScene(idx + 1);
+    }, sceneDuration);
+
+  }, [totalScenes, fetchNarration, fadeMusic]);
+
+  const handlePlay = useCallback(async () => {
+    setIsPlaying(true);
+    setIsPaused(false);
+    setShowControls(false);
+    setPreparingScene(false); // Start immediately — don't block on TTS
+
+    // Attempt background music via musicService — failure is completely silent
+    (async () => {
+      try {
+        if (!musicUrlRef.current) {
+          const query = getMusicQueryForStory(story);
+          const tracks = await findMusicFromSuggestion(query);
+          if (tracks[0]?.url) musicUrlRef.current = tracks[0].url;
+        }
+        if (musicUrlRef.current && !musicRef.current) {
+          const audio = new Audio(musicUrlRef.current);
+          audio.loop = true;
+          audio.volume = 0;
+          audio.preload = 'auto';
+          musicRef.current = audio;
+          await audio.play();
+          fadeMusic(0.25, 2000);
+        }
+      } catch (e) {
+        console.warn('[CinematicReveal] Background music unavailable (silent):', e);
+      }
+    })();
+
+    // Start narration immediately — does NOT wait for music
+    playScene(0);
+  }, [playScene, fadeMusic, story]);
+
+  const handlePause = useCallback(() => {
+    if (!isPlaying || isPaused) return;
+    // Suspend active audio context
+    if (activeAudioCtxRef.current) {
+      try { activeAudioCtxRef.current.suspend(); } catch {}
+    }
+    // Pause music
+    if (musicRef.current) musicRef.current.pause();
+    // Pause scene timer
+    if (sceneTimerRef.current) clearTimeout(sceneTimerRef.current);
+    if (progressTimerRef.current) clearInterval(progressTimerRef.current);
+    setIsPaused(true);
+    setShowControls(true);
+  }, [isPlaying, isPaused]);
+
+  const handleResume = useCallback(() => {
+    if (!isPlaying || !isPaused) return;
+    // Resume audio context
+    if (activeAudioCtxRef.current) {
+      try { activeAudioCtxRef.current.resume(); } catch {}
+    }
+    // Resume music
+    if (musicRef.current) musicRef.current.play().catch(() => {});
+    setIsPaused(false);
+  }, [isPlaying, isPaused]);
+
+  const handleStop = useCallback(() => {
+    // Stop narration
+    if (activeAudioCtxRef.current) {
+      try { activeAudioCtxRef.current.close(); } catch {}
+      activeAudioCtxRef.current = null;
+    }
+    // Stop music
+    if (musicRef.current) { musicRef.current.pause(); musicRef.current.src = ''; musicRef.current = null; }
+    // Clear timers
+    if (sceneTimerRef.current) clearTimeout(sceneTimerRef.current);
+    if (progressTimerRef.current) clearInterval(progressTimerRef.current);
+    setIsPlaying(false);
+    setIsPaused(false);
+    setCurrentScene(0);
+    setSceneProgress(0);
+    setAllDone(false);
+    setShowControls(true);
+  }, []);
+
+  const handleSkipNext = useCallback(() => {
+    if (!isPlaying) return;
+    // Stop current narration and advance
+    if (activeAudioCtxRef.current) {
+      try { activeAudioCtxRef.current.close(); } catch {}
+      activeAudioCtxRef.current = null;
+    }
+    if (sceneTimerRef.current) clearTimeout(sceneTimerRef.current);
+    if (progressTimerRef.current) clearInterval(progressTimerRef.current);
+    setIsPaused(false);
+    playScene(currentScene + 1);
+  }, [isPlaying, currentScene, playScene]);
+
+  const handleSkipPrev = useCallback(() => {
+    if (!isPlaying || currentScene === 0) return;
+    if (activeAudioCtxRef.current) {
+      try { activeAudioCtxRef.current.close(); } catch {}
+      activeAudioCtxRef.current = null;
+    }
+    if (sceneTimerRef.current) clearTimeout(sceneTimerRef.current);
+    if (progressTimerRef.current) clearInterval(progressTimerRef.current);
+    setIsPaused(false);
+    playScene(currentScene - 1);
+  }, [isPlaying, currentScene, playScene]);
+
+  // Auto-hide controls after 3s of playing
+  useEffect(() => {
+    if (isPlaying) {
+      controlsTimerRef.current = setTimeout(() => setShowControls(false), 3000);
+    } else {
+      setShowControls(true);
+      if (controlsTimerRef.current) clearTimeout(controlsTimerRef.current);
+    }
+    return () => { if (controlsTimerRef.current) clearTimeout(controlsTimerRef.current); };
+  }, [isPlaying, currentScene]);
 
   useEffect(() => {
-    if (phase === 'journey' && storyBeats.length > 0) {
-      if (currentBeatIndex < storyBeats.length) {
-        const timer = setTimeout(() => {
-          if ((currentBeatIndex + 1) % 3 === 0 && currentBeatIndex < storyBeats.length - 1) {
-              setPhase('whisper');
-          } else if (currentBeatIndex === storyBeats.length - 1) {
-            setPhase('finale');
-          } else {
-            setCurrentBeatIndex(prev => prev + 1);
-          }
-        }, 8500); 
-        return () => clearTimeout(timer);
-      }
-    } else if (phase === 'whisper') {
-        const timer = setTimeout(() => {
-            setPhase('journey');
-            setCurrentBeatIndex(prev => prev + 1);
-        }, 5000);
-        return () => clearTimeout(timer);
-    }
-  }, [phase, currentBeatIndex, storyBeats.length]);
+    return () => {
+      if (sceneTimerRef.current) clearTimeout(sceneTimerRef.current);
+      if (progressTimerRef.current) clearInterval(progressTimerRef.current);
+      musicRef.current?.pause();
+    };
+  }, []);
 
-  const currentBeat = storyBeats[currentBeatIndex] || null;
-  const currentImage = useMemo(() => {
-    if (!story?.generatedImages || story.generatedImages.length === 0) return null;
-    return story.generatedImages.find(img => img.index === currentBeatIndex) || story.generatedImages[0];
-  }, [story?.generatedImages, currentBeatIndex]);
+  const scene = scenes[currentScene] || { image: '', caption: story.storytellerName, narration: '', beatTitle: '' };
+  const kbOrigin = getKBOrigin(currentScene);
+  const storytellerName = story.storytellerName || 'A Life Well Lived';
 
-  const displayNarrative = useMemo(() => {
-    if (targetLanguage === 'English') return currentBeat?.narrative_chunk;
-    return translatedNarrative[currentBeatIndex] || currentBeat?.narrative_chunk;
-  }, [currentBeatIndex, translatedNarrative, targetLanguage, currentBeat]);
-
-  if (phase === 'gate') {
-      return (
-        <div className="fixed inset-0 bg-black z-[600] flex flex-col items-center justify-center p-12 text-center animate-fade-in cursor-pointer" onClick={handleGateEntry}>
-            <div className="relative mb-12">
-                <div className="absolute inset-0 bg-gemynd-oxblood/30 blur-3xl rounded-full animate-pulse" />
-                <img 
-                    src="https://storage.googleapis.com/gemynd-public/projects/gemynd-portal/gemnyd-branding/Gemynd_Logo_Red_Version.png" 
-                    className="w-24 relative z-10 opacity-80" 
-                    alt="Logo"
-                />
-            </div>
-            <h2 className="text-4xl md:text-6xl font-display font-black text-white/90 mb-4 tracking-tighter drop-shadow-2xl">
-              {story.storytellerName}'s Legacy
-            </h2>
-            <p className="text-amber-500/60 text-[10px] font-black uppercase tracking-[0.8em] animate-pulse">
-              Tap to enter the journey
-            </p>
+  // ── Done screen ──────────────────────────────────────────────────────────────
+  if (allDone) {
+    return (
+      <div className="h-full w-full bg-[#0D0B0A] flex flex-col items-center justify-center p-8 animate-fade-in">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(139,46,59,0.15)_0%,transparent_70%)]" />
+        <div className="relative z-10 text-center space-y-8 max-w-lg">
+          <div className="text-6xl">🕯️</div>
+          <h2 className="text-4xl font-display font-black text-white tracking-tight">
+            The story of <span className="text-heritage-warmGold">{storytellerName}</span>
+          </h2>
+          <p className="text-white/50 font-serif italic text-lg">Preserved forever in the Gemynd Archive.</p>
+          <div className="flex flex-col gap-3">
+            <button
+              onClick={() => { setAllDone(false); setCurrentScene(0); setIsPlaying(false); }}
+              className="px-8 py-4 bg-white/10 hover:bg-white/20 text-white font-black rounded-full text-xs uppercase tracking-[0.3em] transition-all"
+            >
+              Watch Again
+            </button>
+            <button
+              onClick={onRestart}
+              className="px-8 py-4 bg-heritage-burgundy text-white font-black rounded-full shadow-xl text-xs uppercase tracking-[0.3em] hover:scale-[1.02] transition-all"
+            >
+              Preserve Another Story
+            </button>
+          </div>
         </div>
-      );
+      </div>
+    );
   }
 
   return (
-    <div className="fixed inset-0 bg-black z-[300] overflow-hidden flex flex-col font-sans select-none animate-fade-in">
-      <audio ref={audioRef} src={ambientTrack} loop />
-      
-      <style>{`
-        @keyframes ken-burns {
-          0% { transform: scale(1) translate(0,0); }
-          100% { transform: scale(1.15) translate(-1%, -1%); }
-        }
-        .animate-ken-burns { animation: ken-burns 15s ease-out forwards; }
-        
-        @keyframes text-float {
-          0% { opacity: 0; transform: translateY(20px); }
-          15% { opacity: 1; transform: translateY(0); }
-          85% { opacity: 1; transform: translateY(0); }
-          100% { opacity: 0; transform: translateY(-20px); }
-        }
-        .animate-text-float { animation: text-float 8.5s ease-in-out forwards; }
-      `}</style>
+    <div
+      className="h-full w-full relative overflow-hidden bg-black"
+      onClick={() => { if (isPlaying) setShowControls(p => !p); }}
+    >
+      {/* ── Ken Burns image layer ─────────────────────────────────────────────── */}
+      {scene.image ? (
+        <div className="absolute inset-0 overflow-hidden">
+          <img
+            key={`${currentScene}-img`}
+            src={scene.image}
+            alt={scene.caption}
+            className="absolute inset-0 w-full h-full object-cover"
+            style={{
+              transformOrigin: kbOrigin,
+              animation: 'kenBurns 12s ease-out forwards',
+            }}
+          />
+          {/* Vignette */}
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_40%,rgba(0,0,0,0.7)_100%)]" />
+          {/* Bottom gradient for text */}
+          <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/90 via-black/40 to-transparent" />
+          {/* Film grain */}
+          <div className="absolute inset-0 opacity-[0.04] pointer-events-none" style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`,
+            backgroundSize: '150px',
+          }} />
+          {/* Letterbox bars */}
+          <div className="absolute top-0 left-0 right-0 h-12 bg-black" />
+          <div className="absolute bottom-0 left-0 right-0 h-10 bg-black" />
+          {/* ── Real photo anchor inset ────────────────────────────────────── */}
+          {scene.anchorPhoto?.url && (
+            <div className="absolute z-20" style={{ bottom: 52, right: 14 }}>
+              <div style={{ fontSize: 7, fontWeight: 900, letterSpacing: '.18em',
+                color: 'rgba(196,151,59,0.85)', fontFamily: 'system-ui',
+                textTransform: 'uppercase', textAlign: 'right', marginBottom: 4 }}>
+                {scene.anchorPhoto.caption || `The Real ${story.storytellerName}`}
+              </div>
+              <div style={{ width: 88, height: 88, borderRadius: 8, overflow: 'hidden',
+                border: '1.5px solid rgba(196,151,59,0.55)',
+                boxShadow: '0 4px 18px rgba(0,0,0,0.75)' }}>
+                <img src={scene.anchorPhoto.url} alt="Real photo"
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+              </div>
+              {scene.anchorPhoto.era && (
+                <div style={{ fontSize: 7, color: 'rgba(245,236,215,0.35)',
+                  fontFamily: 'system-ui', letterSpacing: '.1em', textAlign: 'right', marginTop: 3 }}>
+                  {scene.anchorPhoto.era}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      ) : (
+        // Fallback: rich dark background with ambient glow
+        <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at center, #2C1F0E 0%, #0D0B0A 100%)' }}>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="text-heritage-warmGold/10 font-display font-black text-[12vw] text-center leading-none px-8">
+              {storytellerName}
+            </div>
+          </div>
+          <div className="absolute top-0 left-0 right-0 h-12 bg-black" />
+          <div className="absolute bottom-0 left-0 right-0 h-10 bg-black" />
+        </div>
+      )}
 
-      {/* Hero Background Layer */}
-      <div className="absolute inset-0 z-0 bg-black">
-        {currentImage && currentImage.image_url && (
-          <div key={currentBeatIndex} className="absolute inset-0 animate-fade-in">
-            <img 
-              src={currentImage.image_url} 
-              className={`w-full h-full object-cover animate-ken-burns brightness-[0.4] transition-all duration-[3s] ${phase === 'whisper' ? 'scale-110 blur-sm brightness-[0.2]' : ''}`} 
-              alt="Scene" 
+      {/* ── Progress rail ─────────────────────────────────────────────────────── */}
+      <div className="absolute top-12 left-0 right-0 z-30 px-4 flex gap-1">
+        {scenes.map((_, i) => (
+          <div key={i} className="flex-1 h-0.5 bg-white/20 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-white transition-none rounded-full"
+              style={{
+                width: i < currentScene ? '100%' : i === currentScene ? `${sceneProgress}%` : '0%',
+                transition: i === currentScene ? 'none' : 'none',
+              }}
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black/60"></div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Scene info overlay ────────────────────────────────────────────────── */}
+      <div
+        className="absolute inset-x-0 bottom-10 z-20 px-8 pb-6 space-y-4 transition-opacity duration-500"
+        style={{ opacity: isPlaying ? (showControls ? 1 : 0) : 1 }}
+      >
+        {/* Beat title */}
+        {scene.beatTitle && isPlaying && (
+          <div key={`${currentScene}-title`} className="animate-fade-in">
+            <span className="text-[9px] font-black uppercase tracking-[0.5em] text-heritage-warmGold/70">
+              {scene.beatTitle}
+            </span>
+          </div>
+        )}
+
+        {/* Narrative text — fades in then fades out */}
+        {scene.narration && isPlaying && (
+          <div
+            key={`${currentScene}-narration`}
+            className="max-w-2xl transition-all duration-700"
+            style={{
+              opacity: showNarrationText ? 1 : 0,
+              transform: showNarrationText ? 'translateY(0)' : 'translateY(8px)',
+            }}
+          >
+            <p
+              className="text-sm lg:text-base font-serif italic leading-relaxed"
+              style={{
+                color: 'rgba(255,255,255,0.92)',
+                textShadow: '0 1px 20px rgba(0,0,0,1), 0 2px 6px rgba(0,0,0,0.9), 0 0 40px rgba(0,0,0,0.8)',
+                lineHeight: 1.75,
+              }}
+            >
+              {scene.narration}
+            </p>
+          </div>
+        )}
+
+        {/* Name */}
+        <h2 className="text-2xl lg:text-3xl font-display font-black text-white leading-tight tracking-tight"
+          style={{ textShadow: '0 2px 20px rgba(0,0,0,0.8)' }}>
+          {storytellerName}
+        </h2>
+
+        {/* Playback controls — shown while playing */}
+        {isPlaying && (
+          <div className="flex flex-col items-center gap-3">
+            {/* Scene counter + loading */}
+            <div className="flex items-center gap-2">
+              <span className="text-white/40 text-[9px] font-black uppercase tracking-widest">
+                {currentScene + 1} / {totalScenes}
+              </span>
+              {loadingNarration && (
+                <span className="text-white/40 text-[9px] font-black uppercase tracking-widest animate-pulse">
+                  · preparing…
+                </span>
+              )}
+            </div>
+
+            {/* Transport controls */}
+            <div className="flex items-center gap-4">
+              {/* Skip prev */}
+              <button
+                onClick={(e) => { e.stopPropagation(); handleSkipPrev(); }}
+                disabled={currentScene === 0}
+                style={{
+                  width: 36, height: 36, borderRadius: '50%',
+                  background: 'rgba(255,255,255,0.08)',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  color: currentScene === 0 ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.7)',
+                  fontSize: 14, cursor: currentScene === 0 ? 'default' : 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+              >⏮</button>
+
+              {/* Pause / Resume */}
+              <button
+                onClick={(e) => { e.stopPropagation(); isPaused ? handleResume() : handlePause(); }}
+                style={{
+                  width: 48, height: 48, borderRadius: '50%',
+                  background: 'rgba(196,151,59,0.15)',
+                  border: '1px solid rgba(196,151,59,0.4)',
+                  color: 'rgba(196,151,59,0.9)',
+                  fontSize: 18, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+              >{isPaused ? '▶' : '⏸'}</button>
+
+              {/* Skip next */}
+              <button
+                onClick={(e) => { e.stopPropagation(); handleSkipNext(); }}
+                style={{
+                  width: 36, height: 36, borderRadius: '50%',
+                  background: 'rgba(255,255,255,0.08)',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  color: 'rgba(255,255,255,0.7)',
+                  fontSize: 14, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+              >⏭</button>
+
+              {/* Stop */}
+              <button
+                onClick={(e) => { e.stopPropagation(); handleStop(); }}
+                style={{
+                  width: 32, height: 32, borderRadius: '50%',
+                  background: 'rgba(255,255,255,0.05)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  color: 'rgba(255,255,255,0.4)',
+                  fontSize: 11, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+              >■</button>
+            </div>
+          </div>
+        )}
+
+        {/* Play button (pre-play state) */}
+        {!isPlaying && !preparingScene && (
+          <div className="pt-2">
+            <button
+              onClick={(e) => { e.stopPropagation(); handlePlay(); }}
+              className="flex items-center gap-4 px-8 py-4 bg-white/10 backdrop-blur-md border border-white/20 text-white font-black rounded-full hover:bg-white/20 active:scale-95 transition-all text-xs uppercase tracking-[0.3em]"
+            >
+              <span className="text-xl">▶</span>
+              Watch {storytellerName}'s Story
+            </button>
+            <p className="text-white/30 text-[9px] mt-3 font-serif italic">
+              {narratorVoice === 'Fenrir' ? '🎙️ His voice narrates' : '🎙️ Her voice narrates'} · 
+              {' '}{scenes.length} chapters
+            </p>
+          </div>
+        )}
+
+        {/* Preparing overlay — shown during TTS fetch before first scene */}
+        {preparingScene && (
+          <div className="pt-2 animate-fade-in">
+            <div className="flex items-center gap-4 px-8 py-4 bg-black/40 backdrop-blur-md border border-white/10 rounded-full">
+              {/* Pulsing dots */}
+              <div className="flex gap-1.5 items-center">
+                {[0, 150, 300].map(delay => (
+                  <div
+                    key={delay}
+                    style={{
+                      width: 6, height: 6, borderRadius: '50%',
+                      background: 'rgba(196,151,59,0.8)',
+                      animation: `dotPulse 1.2s ease-in-out ${delay}ms infinite`,
+                    }}
+                  />
+                ))}
+              </div>
+              <span className="text-white/60 text-[10px] font-black uppercase tracking-[0.3em]">
+                Preparing {storytellerName}'s story…
+              </span>
+            </div>
+            <p className="text-white/25 text-[9px] mt-3 font-serif italic text-center">
+              Generating voice narration — just a moment
+            </p>
           </div>
         )}
       </div>
 
-      {/* Multilingual Selector */}
-      {hasStarted && phase === 'journey' && (
-        <div className="absolute top-8 left-8 z-[350] flex items-center gap-4 animate-fade-in">
-            <div className="flex bg-black/40 backdrop-blur-md rounded-full border border-white/10 p-1">
-                {['English', 'Spanish', 'Mandarin'].map(lang => (
-                    <button 
-                        key={lang}
-                        onClick={() => handleLanguageChange(lang)}
-                        className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest transition-all ${targetLanguage === lang ? 'bg-gemynd-agedGold text-black' : 'text-white/40 hover:text-white'}`}
-                    >
-                        {lang === 'Mandarin' ? '中文' : lang}
-                    </button>
-                ))}
-            </div>
-            {isTranslating && (
-                <div className="flex items-center gap-2 text-gemynd-agedGold animate-pulse">
-                    <GlobeAmericasIcon className="w-4 h-4 animate-spin" />
-                    <span className="text-[8px] font-black uppercase tracking-widest">Translating...</span>
-                </div>
-            )}
-        </div>
-      )}
+      {/* ── Top controls (always visible on hover) ────────────────────────────── */}
+      <div
+        className="absolute top-14 right-4 z-30 flex gap-2 transition-opacity duration-500"
+        style={{ opacity: showControls ? 1 : 0 }}
+      >
+        {onViewShelf && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onViewShelf(); }}
+            className="px-4 py-2 bg-black/50 backdrop-blur-sm text-white/60 hover:text-white border border-white/10 rounded-full text-[9px] font-black uppercase tracking-widest transition-colors"
+          >
+            📚 All Stories
+          </button>
+        )}
+        {onShare && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onShare(); }}
+            className="px-4 py-2 bg-heritage-burgundy/80 backdrop-blur-sm text-white hover:bg-heritage-burgundy border border-heritage-burgundy/40 rounded-full text-[9px] font-black uppercase tracking-widest transition-colors"
+          >
+            ↗ Share
+          </button>
+        )}
+        <button
+          onClick={(e) => { e.stopPropagation(); onRestart(); }}
+          className="px-4 py-2 bg-black/50 backdrop-blur-sm text-white/60 hover:text-white border border-white/10 rounded-full text-[9px] font-black uppercase tracking-widest transition-colors"
+        >
+          ✕ Exit
+        </button>
+      </div>
 
-      {/* Phase Renderers */}
-      {phase === 'title' && (
-        <div className="relative z-10 h-full flex flex-col items-center justify-center text-center px-6 animate-fade-in">
-          <img 
-            src="https://storage.googleapis.com/gemynd-public/projects/gemynd-portal/gemnyd-branding/Gemynd_Logo_Red_Version.png" 
-            className="w-16 mb-12 opacity-80" 
-            alt="Logo" 
-          />
-          <h1 className="text-6xl lg:text-9xl font-display font-black text-white tracking-tighter leading-none mb-6">
-            The Legacy of <br/>
-            <span className="text-gemynd-agedGold">{story.storytellerName}</span>
-          </h1>
-          <div className="w-24 h-0.5 bg-white/10 mx-auto mb-12"></div>
-          
-          {!hasStarted && (
-              <button 
-                onClick={handleStart}
-                className="px-12 py-5 bg-white text-black font-black rounded-full text-[10px] uppercase tracking-[0.4em] shadow-2xl hover:scale-105 active:scale-95 transition-all flex items-center gap-4 haptic-tap"
-              >
-                  <SparklesIcon className="w-4 h-4" />
-                  Reveal the Archive
-              </button>
-          )}
-        </div>
-      )}
-
-      {phase === 'journey' && currentBeat && (
-        <div className="relative z-10 h-full flex flex-col items-center justify-center text-center px-10 lg:px-40">
-          <div key={currentBeatIndex} className="max-w-5xl space-y-10 animate-text-float">
-            <h2 className="text-5xl lg:text-7xl font-display font-black text-white tracking-tighter drop-shadow-2xl">
-              {currentBeat.beat_title}
-            </h2>
-            <p className="text-2xl lg:text-5xl font-serif italic text-white/90 leading-relaxed drop-shadow-xl">
-              "{displayNarrative}"
-            </p>
-          </div>
-        </div>
-      )}
-
-      {phase === 'whisper' && (
-        <div className="relative z-10 h-full flex flex-col items-center justify-center text-center px-10 lg:px-40 animate-fade-in">
-           <p className="text-3xl lg:text-5xl font-serif italic text-white/40 leading-relaxed max-w-4xl drop-shadow-2xl">
-              "{evocativeNarrations[Math.floor(currentBeatIndex / 3) % evocativeNarrations.length]}"
-           </p>
-        </div>
-      )}
-
-      {phase === 'finale' && (
-        <div className="relative z-10 h-full flex flex-col items-center justify-center text-center px-6 animate-fade-in">
-          <div className="mb-16">
-            <div className="w-24 h-24 bg-gemynd-agedGold/10 rounded-full flex items-center justify-center mx-auto mb-8 border border-gemynd-agedGold/30 shadow-2xl">
-              <SparklesIcon className="w-12 h-12 text-gemynd-agedGold" />
-            </div>
-            <h2 className="text-6xl lg:text-9xl font-display font-black text-white mb-4 tracking-tighter">
-              Legacy Secured.
-            </h2>
-            <p className="text-xl font-serif italic text-white/40">Secure archive materialised at the Lexington Node.</p>
-          </div>
-
-          <div className="space-y-4 w-full max-w-md relative">
-            <button 
-              onClick={handleShare}
-              className={`w-full py-7 rounded-full font-black text-[11px] uppercase tracking-[0.5em] transition-all transform active:scale-95 flex items-center justify-center gap-4 shadow-2xl ${
-                isShared 
-                ? 'bg-green-600 text-white shadow-green-900/40' 
-                : 'bg-gemynd-agedGold text-black'
-              }`}
-            >
-              {isShared ? 'Link Secured ✨' : 'Share with Family'}
-            </button>
-            
-            <button 
-              onClick={() => setIsStorybookOpen(true)}
-              className="w-full py-5 bg-white/5 hover:bg-white/10 border border-white/10 text-white font-black rounded-full transition-all text-[10px] uppercase tracking-[0.3em] flex items-center justify-center gap-3 haptic-tap"
-            >
-              <BookOpenIcon className="w-4 h-4" />
-              Read Full Manuscript
-            </button>
-
-            <button 
-                onClick={onRestart}
-                className="mt-12 py-2 text-[9px] font-black uppercase text-white/20 tracking-[0.4em] hover:text-white transition-colors"
-            >
-                End Scribe Session
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Progress Rail */}
-      {hasStarted && (phase === 'journey' || phase === 'whisper') && (
-        <div className="absolute bottom-16 left-20 right-20 flex gap-3 h-1 z-20">
-          {storyBeats.map((_, i) => (
-            <div 
-              key={i} 
-              className={`h-full flex-1 rounded-full transition-all duration-[8500ms] ${
-                i < currentBeatIndex ? 'bg-gemynd-agedGold/40' : 
-                i === currentBeatIndex ? 'bg-white shadow-[0_0_10px_white]' : 'bg-white/5'
-              }`}
-            />
-          ))}
-        </div>
-      )}
-
-      {isStorybookOpen && (
-          <StorybookViewer 
-            isOpen={isStorybookOpen} 
-            onClose={() => setIsStorybookOpen(false)} 
-            story={story as any} 
-          />
-      )}
+      {/* Ken Burns CSS animation */}
+      <style>{`
+        @keyframes kenBurns {
+          0% { transform: scale(1.0); }
+          100% { transform: scale(1.25); }
+        }
+        @keyframes dotPulse {
+          0%, 100% { opacity: 0.3; transform: scale(0.85); }
+          50% { opacity: 1; transform: scale(1.1); }
+        }
+        @keyframes fadeInUp {
+          from { opacity: 0; transform: translateY(6px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in { animation: fadeInUp 0.4s ease-out forwards; }
+      `}</style>
     </div>
   );
 };
