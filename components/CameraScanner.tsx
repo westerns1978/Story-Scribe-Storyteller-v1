@@ -1,507 +1,468 @@
-import React, { useRef, useState, useEffect, useCallback } from 'react';
+// components/CameraScanner.tsx
+// ============================================
+// Universal Scan Input for Story Scribe
+// ============================================
+// Three paths to capture a physical item:
+//   1. CAMERA — photograph a document/photo with device camera
+//   2. FILE UPLOAD — select from device (mobile/desktop)
+//   3. SCANNER — FlowHub bridge (TWAIN USB or eSCL WiFi)
+//
+// After capture, sends to cascade analyze_photo or analyze_document
+// Returns ScanResult to GatheringScreen
+// ============================================
 
-const SUPABASE_URL = 'https://ldzzlndsspkyohvzfiiu.supabase.co/functions/v1/story-cascade';
-const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxkenpsbmRzc3BreW9odnpmaWl1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE3MTEzMDUsImV4cCI6MjA3NzI4NzMwNX0.SK2Y7XMzeGQoVMq9KAmEN1vwy7RjtbIXZf6TyNneFnI';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface ScanResult {
+  base64: string;
+  mimeType: string;
   type: 'photo' | 'document';
-  imageDataUrl: string;       // base64 data URL of the captured frame
-  base64: string;             // raw base64 (no prefix)
-  // document-specific
-  transcribedText?: string;
   documentType?: string;
-  description?: string;
-  keyFacts?: string[];
-  emotionalSignificance?: string;
-  storyContribution?: string;
   era?: string;
-  // photo-specific (passed through from analyze_photo)
-  photoAnalysis?: Record<string, string>;
+  description?: string;
+  transcribedText?: string;
+  keyFacts?: string[];
 }
 
 interface CameraScannerProps {
-  isOpen: boolean;
-  onClose: () => void;
-  /** Called with the full scan result after Gemini Vision analysis */
   onScanComplete: (result: ScanResult) => void;
-  /** Hint for the scanning guide overlay */
-  mode?: 'auto' | 'photo' | 'document';
-  /** Name of subject — shown in the scanning prompt */
-  subjectName?: string;
+  onClose: () => void;
 }
 
-type ScanPhase = 'camera' | 'preview' | 'analyzing' | 'result' | 'error';
+type Mode = 'choose' | 'camera' | 'uploading' | 'scanning' | 'analyzing' | 'preview';
 
-const CameraScanner: React.FC<CameraScannerProps> = ({
-  isOpen,
-  onClose,
-  onScanComplete,
-  mode = 'auto',
-  subjectName,
-}) => {
+// ─── Cascade helper ───────────────────────────────────────────────────────────
+
+const SUPABASE_URL = 'https://ldzzlndsspkyohvzfiiu.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxkenpsbmRzc3BreW9odnpmaWl1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE3MTEzMDUsImV4cCI6MjA3NzI4NzMwNX0.SK2Y7XMzeGQoVMq9KAmEN1vwy7RjtbIXZf6TyNneFnI';
+const CASCADE_URL = `${SUPABASE_URL}/functions/v1/story-cascade`;
+
+async function analyzeImage(base64: string, mimeType: string, isDoc: boolean): Promise<Partial<ScanResult>> {
+  try {
+    const res = await fetch(CASCADE_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'apikey': SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({
+        action: isDoc ? 'analyze_document' : 'analyze_photo',
+        image_base64: base64,
+        mime_type: mimeType,
+      }),
+    });
+    if (!res.ok) return {};
+    const data = await res.json();
+    const a = data.analysis || {};
+    if (isDoc) {
+      return {
+        type: 'document',
+        documentType: a.document_type || 'Document',
+        era: a.estimated_era,
+        description: a.description,
+        transcribedText: a.transcribed_text,
+        keyFacts: a.key_facts || [],
+      };
+    } else {
+      const textFacts = Object.values(a.visible_text || {})
+        .filter((v): v is string => !!v && v !== 'null');
+      return {
+        type: 'photo',
+        documentType: 'Photo',
+        era: a.estimated_era,
+        description: [a.physical_description, a.setting_clues].filter(Boolean).join(' · '),
+        keyFacts: [...(a.verified_facts || []), ...textFacts].slice(0, 6),
+      };
+    }
+  } catch {
+    return {};
+  }
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
+const CameraScanner: React.FC<CameraScannerProps> = ({ onScanComplete, onClose }) => {
+  const [mode, setMode] = useState<Mode>('choose');
+  const [isDoc, setIsDoc] = useState(false);
+  const [status, setStatus] = useState('');
+  const [preview, setPreview] = useState<string | null>(null);
+  const [bridgeOnline, setBridgeOnline] = useState<boolean | null>(null);
+  const [scannerIp, setScannerIp] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('storyscribe_scan_prefs') || '{}').preferredIp || ''; }
+    catch { return ''; }
+  });
+  const [pendingResult, setPendingResult] = useState<ScanResult | null>(null);
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
-  const [phase, setPhase] = useState<ScanPhase>('camera');
-  const [capturedDataUrl, setCapturedDataUrl] = useState<string | null>(null);
-  const [capturedBase64, setCapturedBase64] = useState<string>('');
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [analysisResult, setAnalysisResult] = useState<ScanResult | null>(null);
-  const [errorMsg, setErrorMsg] = useState('');
-  const [analysisStatus, setAnalysisStatus] = useState('Analyzing with Gemini Vision...');
-  const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
+  // Check FlowHub bridge
+  useEffect(() => {
+    fetch('http://localhost:8585/health', { signal: AbortSignal.timeout(2500) })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => setBridgeOnline(!!d))
+      .catch(() => setBridgeOnline(false));
+  }, []);
 
-  // ── Camera lifecycle ──────────────────────────────────────────────────────
+  const stopCamera = useCallback(() => {
+    streamRef.current?.getTracks().forEach(t => t.stop());
+    streamRef.current = null;
+  }, []);
 
-  const startCamera = useCallback(async (facing: 'environment' | 'user' = facingMode) => {
+  useEffect(() => () => stopCamera(), [stopCamera]);
+
+  // ── Process any captured base64 image ─────────────────────────────────────
+  const processImage = useCallback(async (base64: string, mimeType: string) => {
+    const dataUrl = `data:${mimeType};base64,${base64}`;
+    setPreview(dataUrl);
+    setMode('analyzing');
+    setStatus('Connie is reading this...');
+
+    const analysis = await analyzeImage(base64, mimeType, isDoc);
+
+    const result: ScanResult = {
+      base64,
+      mimeType,
+      type: isDoc ? 'document' : 'photo',
+      documentType: isDoc ? 'Document' : 'Photo',
+      ...analysis,
+    };
+
+    setPendingResult(result);
+    setMode('preview');
+    setStatus('');
+  }, [isDoc]);
+
+  // ── Camera ─────────────────────────────────────────────────────────────────
+  const startCamera = useCallback(async () => {
+    setMode('camera');
+    setStatus('');
     try {
-      stopCamera();
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: facing, width: { ideal: 1920 }, height: { ideal: 1080 } }
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 } }
       });
       streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        setIsStreaming(true);
-      }
-    } catch (err: any) {
-      setErrorMsg('Camera access denied. Please allow camera permissions and try again.');
-      setPhase('error');
+      if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play(); }
+    } catch (e: any) {
+      setStatus(`Camera unavailable: ${e.message}`);
     }
-  }, [facingMode]);
+  }, []);
 
-  const stopCamera = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(t => t.stop());
-      streamRef.current = null;
-    }
-    if (videoRef.current) videoRef.current.srcObject = null;
-    setIsStreaming(false);
-  };
-
-  useEffect(() => {
-    if (isOpen) {
-      setPhase('camera');
-      setCapturedDataUrl(null);
-      setCapturedBase64('');
-      setAnalysisResult(null);
-      setErrorMsg('');
-      startCamera();
-    } else {
-      stopCamera();
-    }
-    return () => stopCamera();
-  }, [isOpen]);
-
-  // ── Capture ───────────────────────────────────────────────────────────────
-
-  const handleCapture = () => {
-    if (!videoRef.current || !canvasRef.current || !isStreaming) return;
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
-    const b64 = dataUrl.split(',')[1];
-    setCapturedDataUrl(dataUrl);
-    setCapturedBase64(b64);
+  const captureFromCamera = useCallback(async () => {
+    if (!videoRef.current || !canvasRef.current) return;
+    const v = videoRef.current, c = canvasRef.current;
+    c.width = v.videoWidth; c.height = v.videoHeight;
+    c.getContext('2d')?.drawImage(v, 0, 0);
+    const base64 = c.toDataURL('image/jpeg', 0.92).split(',')[1];
     stopCamera();
-    setPhase('preview');
-  };
+    await processImage(base64, 'image/jpeg');
+  }, [stopCamera, processImage]);
 
-  // ── Analyze ───────────────────────────────────────────────────────────────
+  // ── File upload ────────────────────────────────────────────────────────────
+  const handleFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setMode('uploading');
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64 = (reader.result as string).split(',')[1];
+      await processImage(base64, file.type || 'image/jpeg');
+    };
+    reader.readAsDataURL(file);
+  }, [processImage]);
 
-  const detectType = async (b64: string): Promise<'photo' | 'document'> => {
-    if (mode === 'photo') return 'photo';
-    if (mode === 'document') return 'document';
-    // Quick Gemini call to classify
+  // ── Scanner ────────────────────────────────────────────────────────────────
+  const handleScan = useCallback(async () => {
+    setMode('scanning');
+    setStatus('Connecting to scanner...');
     try {
-      const res = await fetch(SUPABASE_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_ANON}` },
-        body: JSON.stringify({
-          action: 'analyze_document',
-          image_base64: b64,
-          mime_type: 'image/jpeg',
-        }),
-      });
-      const data = await res.json();
-      const docType: string = data?.analysis?.document_type || '';
-      const photoWords = ['photograph', 'photo', 'portrait', 'snapshot', 'image'];
-      const isPhoto = photoWords.some(w => docType.toLowerCase().includes(w));
-      return isPhoto ? 'photo' : 'document';
-    } catch {
-      return 'document';
+      const { scan } = await import('../services/scanService');
+      const result = await scan({
+        resolution: 300,
+        colorMode: isDoc ? 'grayscale' : 'color',
+        scannerIp: scannerIp || undefined,
+      }, (msg) => setStatus(msg));
+      await processImage(result.base64, result.mimeType);
+    } catch (e: any) {
+      setStatus(`${e.message.slice(0, 100)}`);
+      setMode('choose');
     }
-  };
+  }, [isDoc, scannerIp, processImage]);
 
-  const handleAnalyze = async () => {
-    if (!capturedBase64) return;
-    setPhase('analyzing');
+  // ── Confirm and send to story ──────────────────────────────────────────────
+  const confirmScan = useCallback(() => {
+    if (pendingResult) onScanComplete(pendingResult);
+  }, [pendingResult, onScanComplete]);
 
-    try {
-      // Step 1 — always run document analysis (gives us OCR + description + key facts)
-      setAnalysisStatus('Running Gemini Vision OCR...');
-      const docRes = await fetch(SUPABASE_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_ANON}` },
-        body: JSON.stringify({
-          action: 'analyze_document',
-          image_base64: capturedBase64,
-          mime_type: 'image/jpeg',
-        }),
-      });
-      const docData = await docRes.json();
-      const doc = docData?.analysis || {};
+  // ─── Render ────────────────────────────────────────────────────────────────
 
-      // Step 2 — if it looks like a portrait photo, also run photo analysis
-      let photoAnalysis: Record<string, string> | undefined;
-      const docType: string = doc.document_type || '';
-      const isPortrait = ['photograph', 'photo', 'portrait', 'snapshot'].some(w =>
-        docType.toLowerCase().includes(w)
-      );
+  const overlay = (
+    <div className="fixed inset-0 z-[700] bg-black/75 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="w-full sm:max-w-md bg-[#18120e] rounded-t-3xl sm:rounded-3xl overflow-hidden shadow-2xl border border-white/10 flex flex-col max-h-[90vh]">
 
-      if (isPortrait || mode === 'photo') {
-        setAnalysisStatus('Analyzing portrait details...');
-        try {
-          const photoRes = await fetch(SUPABASE_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_ANON}` },
-            body: JSON.stringify({
-              action: 'analyze_photo',
-              photo_data: capturedBase64,
-              media_type: 'image/jpeg',
-            }),
-          });
-          const photoData = await photoRes.json();
-          photoAnalysis = photoData?.analysis;
-        } catch { /* non-fatal */ }
-      }
-
-      const result: ScanResult = {
-        type: isPortrait ? 'photo' : 'document',
-        imageDataUrl: capturedDataUrl!,
-        base64: capturedBase64,
-        transcribedText: doc.transcribed_text || undefined,
-        documentType: doc.document_type,
-        description: doc.description,
-        keyFacts: doc.key_facts,
-        emotionalSignificance: doc.emotional_significance,
-        storyContribution: doc.story_contribution,
-        era: doc.estimated_era,
-        photoAnalysis,
-      };
-
-      setAnalysisResult(result);
-      setPhase('result');
-    } catch (err: any) {
-      setErrorMsg('Gemini Vision analysis failed. Please try again.');
-      setPhase('error');
-    }
-  };
-
-  const handleRetake = () => {
-    setCapturedDataUrl(null);
-    setCapturedBase64('');
-    setAnalysisResult(null);
-    setPhase('camera');
-    startCamera();
-  };
-
-  const handleAccept = () => {
-    if (analysisResult) {
-      onScanComplete(analysisResult);
-      onClose();
-    }
-  };
-
-  const flipCamera = () => {
-    const next = facingMode === 'environment' ? 'user' : 'environment';
-    setFacingMode(next);
-    startCamera(next);
-  };
-
-  if (!isOpen) return null;
-
-  // ── Render ────────────────────────────────────────────────────────────────
-
-  return (
-    <div className="fixed inset-0 z-[200] bg-black flex flex-col">
-
-      {/* Header */}
-      <div className="absolute top-0 left-0 right-0 z-10 flex justify-between items-center px-4 pt-safe pt-4 pb-3"
-        style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, transparent 100%)' }}>
-        <button onClick={onClose}
-          className="w-10 h-10 rounded-full bg-black/40 backdrop-blur flex items-center justify-center text-white">
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-
-        <div className="text-center">
-          <p className="text-white/90 text-sm font-bold tracking-widest uppercase">
-            {phase === 'camera' ? 'Artifact Scanner' :
-             phase === 'preview' ? 'Review Capture' :
-             phase === 'analyzing' ? 'Analyzing...' :
-             phase === 'result' ? 'Scan Complete' : 'Error'}
-          </p>
-          {subjectName && (
-            <p className="text-white/40 text-[10px] tracking-wider">{subjectName}'s Memory</p>
-          )}
+        {/* ── Header ── */}
+        <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-white/10 shrink-0">
+          <div>
+            <p className="text-white font-bold text-base">Add to Story</p>
+            <p className="text-white/35 text-xs mt-0.5">Photos, letters, drawings, documents</p>
+          </div>
+          <button
+            onClick={() => { stopCamera(); onClose(); }}
+            className="w-8 h-8 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white/60 hover:text-white transition-all"
+          >✕</button>
         </div>
 
-        {phase === 'camera' ? (
-          <button onClick={flipCamera}
-            className="w-10 h-10 rounded-full bg-black/40 backdrop-blur flex items-center justify-center text-white">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-          </button>
-        ) : <div className="w-10" />}
-      </div>
+        {/* ── Content ── */}
+        <div className="flex-1 overflow-y-auto">
 
-      {/* Main view area */}
-      <div className="flex-1 relative overflow-hidden bg-black flex items-center justify-center">
+          {/* CHOOSE MODE */}
+          {mode === 'choose' && (
+            <div className="p-5 space-y-4">
 
-        {/* Live camera */}
-        {phase === 'camera' && (
-          <>
-            <video ref={videoRef} autoPlay playsInline muted
-              className="absolute inset-0 w-full h-full object-cover" />
-
-            {/* Scanning overlay */}
-            <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-              <div className="relative w-[85%] max-w-sm aspect-[3/4]">
-                {/* Corner brackets */}
+              {/* Photo vs Document toggle */}
+              <div className="flex gap-2 p-1 bg-white/5 rounded-2xl">
                 {[
-                  'top-0 left-0 border-t-2 border-l-2 rounded-tl-lg',
-                  'top-0 right-0 border-t-2 border-r-2 rounded-tr-lg',
-                  'bottom-0 left-0 border-b-2 border-l-2 rounded-bl-lg',
-                  'bottom-0 right-0 border-b-2 border-r-2 rounded-br-lg',
-                ].map((cls, i) => (
-                  <div key={i} className={`absolute w-8 h-8 border-[#C4973B] ${cls}`} />
+                  { val: false, label: '📷 Photo', sub: 'Old photos, portraits, artwork' },
+                  { val: true, label: '📄 Document', sub: 'Letters, obituaries, records' },
+                ].map(({ val, label, sub }) => (
+                  <button
+                    key={String(val)}
+                    onClick={() => setIsDoc(val)}
+                    className={`flex-1 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all text-left ${isDoc === val ? 'bg-amber-600/80 text-white shadow' : 'text-white/40 hover:text-white/70'}`}
+                  >
+                    <div>{label}</div>
+                    <div className="text-[10px] font-normal opacity-70 mt-0.5">{sub}</div>
+                  </button>
                 ))}
-                {/* Scan line */}
-                <div className="absolute inset-x-0 h-px bg-[#C4973B]/60"
-                  style={{ animation: 'scanline 2.5s ease-in-out infinite', top: '50%' }} />
               </div>
-            </div>
 
-            {/* Guide text */}
-            <div className="absolute bottom-32 left-0 right-0 flex justify-center pointer-events-none">
-              <div className="px-4 py-2 bg-black/50 backdrop-blur-sm rounded-full">
-                <p className="text-white/60 text-xs font-medium tracking-widest uppercase">
-                  {mode === 'photo' ? 'Frame the photo or portrait' :
-                   mode === 'document' ? 'Position document flat in frame' :
-                   'Photo, letter, or document'}
+              {/* Connie guidance */}
+              <div className="flex gap-3 p-3 bg-amber-600/10 border border-amber-600/20 rounded-2xl">
+                <img
+                  src="https://storage.googleapis.com/westerns1978-digital-assets/Websites/story-scribe/connie-ai.png"
+                  alt="Connie"
+                  className="w-8 h-8 rounded-full shrink-0 object-cover"
+                />
+                <p className="text-amber-200/70 text-xs leading-relaxed">
+                  {isDoc
+                    ? 'Place the document flat and well-lit. I\'ll read every word — handwritten, typed, or printed.'
+                    : 'Old photos work beautifully. I\'ll note the era, faces, and any visible text like names or dates.'}
                 </p>
               </div>
-            </div>
-          </>
-        )}
 
-        {/* Captured preview */}
-        {(phase === 'preview' || phase === 'analyzing') && capturedDataUrl && (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <img src={capturedDataUrl} alt="Captured"
-              className="max-w-full max-h-full object-contain" />
-            {phase === 'analyzing' && (
-              <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center gap-5">
-                {/* Heritage amber spinner */}
-                <div className="relative w-20 h-20">
-                  <div className="absolute inset-0 rounded-full border-4 border-[#C4973B]/20" />
-                  <div className="absolute inset-0 rounded-full border-4 border-t-[#C4973B] animate-spin" />
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <svg className="w-7 h-7 text-[#C4973B]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                        d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
-                    </svg>
+              {/* Input options */}
+              <div className="space-y-2">
+
+                {/* Camera */}
+                <button
+                  onClick={startCamera}
+                  className="w-full flex items-center gap-4 p-4 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-amber-600/40 rounded-2xl transition-all group"
+                >
+                  <span className="text-2xl">📷</span>
+                  <div className="text-left">
+                    <p className="text-white text-sm font-semibold">Use Camera</p>
+                    <p className="text-white/40 text-xs">Point at a {isDoc ? 'document' : 'photo'} and capture</p>
                   </div>
-                </div>
-                <div className="text-center">
-                  <p className="text-white font-bold text-lg">Gemini Vision</p>
-                  <p className="text-[#C4973B] text-sm mt-1 animate-pulse">{analysisStatus}</p>
+                  <span className="ml-auto text-white/20 group-hover:text-white/40">›</span>
+                </button>
+
+                {/* File upload */}
+                <button
+                  onClick={() => fileRef.current?.click()}
+                  className="w-full flex items-center gap-4 p-4 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-amber-600/40 rounded-2xl transition-all group"
+                >
+                  <span className="text-2xl">🗂️</span>
+                  <div className="text-left">
+                    <p className="text-white text-sm font-semibold">Upload File</p>
+                    <p className="text-white/40 text-xs">Choose a photo or image from your device</p>
+                  </div>
+                  <span className="ml-auto text-white/20 group-hover:text-white/40">›</span>
+                </button>
+                <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+
+                {/* Scanner */}
+                <button
+                  onClick={() => {
+                    if (bridgeOnline) {
+                      handleScan();
+                    } else {
+                      setMode('scanning');
+                      setStatus('FlowHub bridge not detected. Enter scanner IP for direct eSCL scan, or start flowhub_bridge.py for TWAIN/USB scanning.');
+                    }
+                  }}
+                  className="w-full flex items-center gap-4 p-4 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-amber-600/40 rounded-2xl transition-all group"
+                >
+                  <span className="text-2xl">🖨️</span>
+                  <div className="text-left">
+                    <p className="text-white text-sm font-semibold flex items-center gap-2">
+                      Use Scanner
+                      {bridgeOnline === true && <span className="text-[9px] px-1.5 py-0.5 bg-green-500/20 text-green-400 rounded-full font-bold">READY</span>}
+                      {bridgeOnline === false && <span className="text-[9px] px-1.5 py-0.5 bg-white/10 text-white/30 rounded-full font-bold">OFFLINE</span>}
+                    </p>
+                    <p className="text-white/40 text-xs">
+                      {bridgeOnline ? 'TWAIN/USB or eSCL network scanner via FlowHub' : 'Start FlowHub bridge or enter scanner IP'}
+                    </p>
+                  </div>
+                  <span className="ml-auto text-white/20 group-hover:text-white/40">›</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* CAMERA MODE */}
+          {mode === 'camera' && (
+            <div className="flex flex-col">
+              <div className="relative bg-black aspect-[4/3]">
+                <video ref={videoRef} className="w-full h-full object-cover" playsInline muted autoPlay />
+                {/* Alignment guide */}
+                <div className="absolute inset-6 border-2 border-white/30 rounded-xl pointer-events-none" />
+                <div className="absolute bottom-4 left-0 right-0 text-center text-white/50 text-xs">
+                  Align the {isDoc ? 'document' : 'photo'} within the frame
                 </div>
               </div>
-            )}
-          </div>
-        )}
+              <canvas ref={canvasRef} className="hidden" />
+              <div className="p-5 flex gap-3">
+                <button
+                  onClick={() => { stopCamera(); setMode('choose'); }}
+                  className="flex-1 py-3 bg-white/10 text-white/60 rounded-2xl text-sm font-semibold hover:bg-white/15 transition-all"
+                >
+                  Back
+                </button>
+                <button
+                  onClick={captureFromCamera}
+                  className="flex-1 py-3 bg-amber-600 text-white rounded-2xl text-sm font-bold hover:bg-amber-500 transition-all"
+                >
+                  📸 Capture
+                </button>
+              </div>
+              {status && <p className="text-red-400 text-xs text-center px-5 pb-4">{status}</p>}
+            </div>
+          )}
 
-        {/* Result display */}
-        {phase === 'result' && analysisResult && (
-          <div className="absolute inset-0 flex overflow-hidden">
-            {/* Left — image */}
-            <div className="w-1/3 flex-shrink-0 relative bg-black">
-              <img src={analysisResult.imageDataUrl} alt="Scanned"
-                className="absolute inset-0 w-full h-full object-cover opacity-80" />
-              <div className="absolute bottom-0 left-0 right-0 p-2 bg-black/60 backdrop-blur-sm">
-                <p className="text-[10px] text-[#C4973B] font-bold uppercase tracking-widest text-center">
-                  {analysisResult.documentType || 'Artifact'}
-                </p>
-                {analysisResult.era && (
-                  <p className="text-[10px] text-white/50 text-center">{analysisResult.era}</p>
+          {/* SCANNING / UPLOADING */}
+          {(mode === 'scanning' || mode === 'uploading') && (
+            <div className="p-6 space-y-4">
+              {status && !status.includes('not detected') && (
+                <div className="flex flex-col items-center gap-3 py-4">
+                  <div className="w-10 h-10 border-2 border-amber-600/40 border-t-amber-600 rounded-full animate-spin" />
+                  <p className="text-white/60 text-sm text-center">{status}</p>
+                </div>
+              )}
+              {(status.includes('not detected') || status.includes('offline') || status.includes('failed') || status.includes('FlowHub')) && (
+                <div className="space-y-3">
+                  <p className="text-white/50 text-xs leading-relaxed">{status}</p>
+                  <div className="space-y-2">
+                    <label className="text-white/40 text-xs font-semibold uppercase tracking-widest">Scanner IP (eSCL direct)</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={scannerIp}
+                        onChange={e => setScannerIp(e.target.value)}
+                        placeholder="192.168.1.x"
+                        className="flex-1 bg-white/10 border border-white/20 rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-amber-600/60"
+                      />
+                      <button
+                        onClick={() => {
+                          if (scannerIp) {
+                            try { localStorage.setItem('storyscribe_scan_prefs', JSON.stringify({ preferredIp: scannerIp })); } catch {}
+                            handleScan();
+                          }
+                        }}
+                        disabled={!scannerIp}
+                        className="px-4 py-2.5 bg-amber-600 text-white rounded-xl text-sm font-bold disabled:opacity-40 hover:bg-amber-500 transition-all"
+                      >
+                        Scan
+                      </button>
+                    </div>
+                    <p className="text-white/25 text-[10px]">
+                      Find your scanner's IP in its network settings or router. Epson DS-790WN is typically 192.168.1.145.
+                    </p>
+                  </div>
+                  <button onClick={() => setMode('choose')} className="text-white/30 text-xs hover:text-white/50 transition-colors">← Back</button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ANALYZING */}
+          {mode === 'analyzing' && (
+            <div className="p-6 flex flex-col items-center gap-4 py-8">
+              {preview && (
+                <img src={preview} alt="Captured" className="w-32 h-32 object-cover rounded-2xl border border-white/20 shadow-lg opacity-60" />
+              )}
+              <div className="w-8 h-8 border-2 border-amber-600/40 border-t-amber-600 rounded-full animate-spin" />
+              <div className="text-center">
+                <p className="text-white text-sm font-semibold">Connie is reading this</p>
+                <p className="text-white/40 text-xs mt-1">Extracting text, era, and key facts...</p>
+              </div>
+            </div>
+          )}
+
+          {/* PREVIEW / CONFIRM */}
+          {mode === 'preview' && pendingResult && (
+            <div className="p-5 space-y-4">
+              <div className="flex gap-4">
+                {preview && (
+                  <img src={preview} alt="Scanned" className="w-20 h-20 object-cover rounded-xl border border-white/20 shrink-0" />
                 )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-white font-semibold text-sm">{pendingResult.documentType || 'Item'} captured</p>
+                  {pendingResult.era && <p className="text-amber-400/70 text-xs mt-0.5">Era: {pendingResult.era}</p>}
+                  {pendingResult.description && (
+                    <p className="text-white/40 text-xs mt-1 line-clamp-2">{pendingResult.description}</p>
+                  )}
+                </div>
+              </div>
+
+              {pendingResult.transcribedText && (
+                <div className="bg-white/5 border border-white/10 rounded-2xl p-3">
+                  <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest mb-1.5">Connie read this:</p>
+                  <p className="text-white/70 text-xs leading-relaxed line-clamp-4">{pendingResult.transcribedText}</p>
+                </div>
+              )}
+
+              {pendingResult.keyFacts && pendingResult.keyFacts.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {pendingResult.keyFacts.map((f, i) => (
+                    <span key={i} className="text-[10px] px-2 py-1 bg-amber-600/15 text-amber-300/70 rounded-full border border-amber-600/20">
+                      {f}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {!pendingResult.transcribedText && !pendingResult.keyFacts?.length && (
+                <p className="text-white/30 text-xs text-center py-2">Connie will weave this into the story visually.</p>
+              )}
+
+              <div className="flex gap-3 pt-1">
+                <button
+                  onClick={() => { setPendingResult(null); setPreview(null); setMode('choose'); }}
+                  className="flex-1 py-3 bg-white/10 text-white/60 rounded-2xl text-sm font-semibold hover:bg-white/15 transition-all"
+                >
+                  Rescan
+                </button>
+                <button
+                  onClick={confirmScan}
+                  className="flex-1 py-3 bg-amber-600 text-white rounded-2xl text-sm font-bold hover:bg-amber-500 transition-all"
+                >
+                  ✓ Add to Story
+                </button>
               </div>
             </div>
+          )}
 
-            {/* Right — analysis */}
-            <div className="flex-1 overflow-y-auto bg-[#0D0B0A] p-4 space-y-4">
-
-              {/* OCR text */}
-              {analysisResult.transcribedText && (
-                <div className="rounded-xl bg-[#C4973B]/10 border border-[#C4973B]/20 p-3">
-                  <p className="text-[10px] font-bold text-[#C4973B] uppercase tracking-widest mb-2">
-                    Transcribed Text
-                  </p>
-                  <p className="text-white/80 text-xs leading-relaxed font-mono whitespace-pre-wrap">
-                    {analysisResult.transcribedText}
-                  </p>
-                </div>
-              )}
-
-              {/* Description */}
-              {analysisResult.description && (
-                <div>
-                  <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1">Description</p>
-                  <p className="text-white/70 text-xs leading-relaxed">{analysisResult.description}</p>
-                </div>
-              )}
-
-              {/* Key facts */}
-              {analysisResult.keyFacts && analysisResult.keyFacts.length > 0 && (
-                <div>
-                  <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-2">Key Facts</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {analysisResult.keyFacts.map((fact, i) => (
-                      <span key={i}
-                        className="text-[10px] px-2 py-1 bg-white/5 border border-white/10 rounded-full text-white/60">
-                        {fact}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Story contribution */}
-              {analysisResult.storyContribution && (
-                <div className="rounded-xl bg-white/5 border border-white/10 p-3">
-                  <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1">Story Value</p>
-                  <p className="text-white/60 text-xs italic leading-relaxed">
-                    "{analysisResult.storyContribution}"
-                  </p>
-                </div>
-              )}
-
-              {/* Photo portrait details */}
-              {analysisResult.photoAnalysis && (
-                <div>
-                  <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-2">Portrait Details</p>
-                  <div className="space-y-1">
-                    {Object.entries(analysisResult.photoAnalysis)
-                      .filter(([k, v]) => v && !['error', 'raw'].includes(k))
-                      .map(([k, v]) => (
-                        <div key={k} className="flex gap-2 text-[10px]">
-                          <span className="text-white/30 capitalize min-w-[80px]">
-                            {k.replace(/_/g, ' ')}
-                          </span>
-                          <span className="text-white/60">{v as string}</span>
-                        </div>
-                      ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Error state */}
-        {phase === 'error' && (
-          <div className="flex flex-col items-center justify-center gap-4 p-8 text-center">
-            <div className="w-16 h-16 rounded-full bg-red-900/30 border border-red-500/30 flex items-center justify-center">
-              <svg className="w-8 h-8 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-            </div>
-            <p className="text-white/80 font-medium">{errorMsg}</p>
-          </div>
-        )}
+        </div>
       </div>
-
-      {/* Hidden canvas for capture */}
-      <canvas ref={canvasRef} className="hidden" />
-
-      {/* Footer controls */}
-      <div className="pb-safe pb-8 pt-4 px-6 flex items-center justify-center gap-4"
-        style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 100%)' }}>
-
-        {phase === 'camera' && (
-          <button onClick={handleCapture} disabled={!isStreaming}
-            className="w-20 h-20 rounded-full flex items-center justify-center disabled:opacity-40"
-            style={{ border: '4px solid rgba(196,151,59,0.6)', background: 'rgba(196,151,59,0.15)' }}
-            aria-label="Capture">
-            <div className="w-14 h-14 rounded-full bg-[#C4973B]" />
-          </button>
-        )}
-
-        {phase === 'preview' && (
-          <div className="flex gap-4 w-full max-w-sm">
-            <button onClick={handleRetake}
-              className="flex-1 py-4 rounded-2xl bg-white/10 text-white font-bold text-sm tracking-widest uppercase">
-              Retake
-            </button>
-            <button onClick={handleAnalyze}
-              className="flex-1 py-4 rounded-2xl font-bold text-sm tracking-widest uppercase text-[#0D0B0A] flex items-center justify-center gap-2"
-              style={{ background: '#C4973B' }}>
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
-              </svg>
-              Analyze
-            </button>
-          </div>
-        )}
-
-        {phase === 'result' && (
-          <div className="flex gap-4 w-full max-w-sm">
-            <button onClick={handleRetake}
-              className="flex-1 py-4 rounded-2xl bg-white/10 text-white font-bold text-sm tracking-widest uppercase">
-              Rescan
-            </button>
-            <button onClick={handleAccept}
-              className="flex-1 py-4 rounded-2xl font-bold text-sm tracking-widest uppercase text-[#0D0B0A] flex items-center justify-center gap-2"
-              style={{ background: '#C4973B' }}>
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-              Add to Story
-            </button>
-          </div>
-        )}
-
-        {phase === 'error' && (
-          <button onClick={handleRetake}
-            className="py-4 px-8 rounded-2xl bg-white/10 text-white font-bold text-sm tracking-widest uppercase">
-            Try Again
-          </button>
-        )}
-      </div>
-
-      <style>{`
-        @keyframes scanline {
-          0%   { top: 10%; opacity: 0; }
-          10%  { opacity: 1; }
-          90%  { opacity: 1; }
-          100% { top: 90%; opacity: 0; }
-        }
-      `}</style>
     </div>
   );
+
+  return overlay;
 };
 
 export default CameraScanner;
