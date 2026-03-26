@@ -264,9 +264,9 @@ async function scanViaBridge(
   const start = Date.now();
 
   const payload: any = {
-    resolution: options.resolution ?? 300,
+    resolution: options.resolution ?? 150,
     color_mode: options.colorMode ?? 'color',
-    format: options.format ?? 'jpeg',
+    format: options.format ?? 'pdf',
   };
   if (options.scannerIp) payload.scanner_ip = options.scannerIp;
   if (options.twainSource) payload.twain_source = options.twainSource;

@@ -163,18 +163,20 @@ const CameraScanner: React.FC<CameraScannerProps> = ({ onScanComplete, onClose, 
 
   // ── Process any captured base64 image ─────────────────────────────────────
   const processImage = useCallback(async (base64: string, mimeType: string) => {
-    const dataUrl = `data:${mimeType};base64,${base64}`;
-    setPreview(dataUrl);
+    // For PDFs — don't try to render as image, show doc icon instead
+    const isPdf = mimeType === 'application/pdf';
+    const previewUrl = isPdf ? null : `data:${mimeType};base64,${base64}`;
+    setPreview(previewUrl);
     setMode('analyzing');
     setStatus('Connie is reading this...');
 
-    const analysis = await analyzeImage(base64, mimeType, isDoc);
+    const analysis = await analyzeImage(base64, mimeType, isDoc || isPdf);
 
     const result: ScanResult = {
       base64,
       mimeType,
-      type: isDoc ? 'document' : 'photo',
-      documentType: isDoc ? 'Document' : 'Photo',
+      type: 'document',
+      documentType: isPdf ? 'Scanned PDF' : (isDoc ? 'Document' : 'Photo'),
       ...analysis,
     };
 
