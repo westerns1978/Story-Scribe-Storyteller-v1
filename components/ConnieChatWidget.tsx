@@ -135,58 +135,86 @@ interface ScanButtonProps {
 const ScanButton: React.FC<ScanButtonProps> = ({ onScanComplete }) => {
   const [isScanning, setIsScanning] = useState(false);
   const [scanStatus, setScanStatus] = useState('');
-  const [showIpInput, setShowIpInput] = useState(false);
+  const [showOptions, setShowOptions] = useState(false);
   const [scannerIp, setScannerIp] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('storyscribe_scanner_ips') || '[]')[0] || ''; }
-    catch { return ''; }
+    try {
+      const prefs = JSON.parse(localStorage.getItem('storyscribe_scan_prefs') || '{}');
+      return prefs.preferredIp || JSON.parse(localStorage.getItem('storyscribe_scanner_ips') || '[]')[0] || '';
+    } catch { return ''; }
   });
 
   const handleScan = async () => {
-    if (!scannerIp) { setShowIpInput(true); return; }
     setIsScanning(true);
-    setScanStatus('Connecting…');
+    setScanStatus('Detecting scanner…');
     try {
-      // Dynamically import esclService so it doesn't bloat initial bundle
-      const { scanPage, saveScannerIp } = await import('../services/esclService');
-      saveScannerIp(scannerIp);
-      const result = await scanPage(scannerIp, {
-        resolution: 300,
-        colorMode: 'RGB24',
-        intent: 'Photo',
-        format: 'image/jpeg',
+      // Dynamically import unified scanService — auto-detects TWAIN, eSCL, SANE
+      const { scan, getBridgeStatus, saveScanPrefs } = await import('../services/scanService');
+
+      // Check what's available
+      const bridge = await getBridgeStatus();
+
+      // If bridge is offline and no IP configured, show options
+      if (!bridge.running && !scannerIp) {
+        setIsScanning(false);
+        setShowOptions(true);
+        return;
+      }
+
+      const prefs = JSON.parse(localStorage.getItem('storyscribe_scan_prefs') || '{}');
+      const result = await scan({
+        resolution: prefs.resolution || 300,
+        colorMode: prefs.colorMode || 'color',
+        scannerIp: scannerIp || undefined,
       }, (msg) => setScanStatus(msg));
+
+      // Save working IP for next time
+      if (result.protocol === 'escl' && scannerIp) {
+        saveScanPrefs({ preferredIp: scannerIp });
+      }
+
       onScanComplete(result.base64, result.mimeType);
-      setScanStatus('✓ Scanned');
-      setTimeout(() => setScanStatus(''), 2000);
+      setScanStatus(`✓ ${result.protocol.toUpperCase()} — ${Math.round(result.durationMs / 1000)}s`);
+      setTimeout(() => setScanStatus(''), 3000);
     } catch (e: any) {
-      setScanStatus(`⚠ ${e.message.slice(0, 40)}`);
-      setTimeout(() => setScanStatus(''), 4000);
+      setScanStatus(`⚠ ${e.message.slice(0, 50)}`);
+      setTimeout(() => { setScanStatus(''); setShowOptions(true); }, 3000);
     } finally {
       setIsScanning(false);
     }
   };
 
-  if (showIpInput) {
+  if (showOptions) {
     return (
       <div className="absolute bottom-20 left-4 right-4 bg-white border border-heritage-parchment rounded-2xl p-3 shadow-warm-lg z-10">
-        <p className="text-[10px] font-bold text-heritage-inkSoft uppercase tracking-widest mb-2">Scanner IP Address</p>
-        <div className="flex gap-2">
+        <div className="flex justify-between items-center mb-2">
+          <p className="text-[10px] font-bold text-heritage-inkSoft uppercase tracking-widest">Scanner Setup</p>
+          <button onClick={() => setShowOptions(false)} className="text-heritage-inkMuted text-xs">✕</button>
+        </div>
+        <p className="text-[10px] text-heritage-inkMuted mb-2">
+          For USB/TWAIN scanners: start <strong>flowhub_bridge.py</strong> on this PC first.
+          For network scanners: enter the scanner's IP.
+        </p>
+        <div className="flex gap-2 mb-2">
           <input
             type="text"
             value={scannerIp}
             onChange={e => setScannerIp(e.target.value)}
-            placeholder="192.168.1.x"
-            className="flex-1 bg-heritage-linen border-none rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-heritage-warmGold"
-            onKeyPress={e => { if (e.key === 'Enter') { setShowIpInput(false); handleScan(); } }}
+            placeholder="IP for network scanner (optional)"
+            className="flex-1 bg-heritage-linen border-none rounded-xl px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-heritage-warmGold"
+            onKeyPress={e => { if (e.key === 'Enter') { setShowOptions(false); handleScan(); } }}
           />
           <button
-            onClick={() => { setShowIpInput(false); handleScan(); }}
-            className="px-3 py-2 bg-heritage-sage text-white text-xs font-bold rounded-xl"
+            onClick={() => { setShowOptions(false); handleScan(); }}
+            className="px-3 py-2 bg-heritage-sage text-white text-xs font-bold rounded-xl whitespace-nowrap"
           >
-            Scan
+            Scan Now
           </button>
         </div>
-        <p className="text-[9px] text-heritage-inkMuted mt-1.5">FlowHub bridge must be running on this device.</p>
+        <div className="flex gap-2 text-[9px] text-heritage-inkMuted">
+          <span>🖨 TWAIN/USB</span>
+          <span>📡 eSCL/WiFi</span>
+          <span>🐧 SANE/Linux</span>
+        </div>
       </div>
     );
   }
@@ -195,7 +223,7 @@ const ScanButton: React.FC<ScanButtonProps> = ({ onScanComplete }) => {
     <button
       onClick={handleScan}
       disabled={isScanning}
-      title={scanStatus || 'Scan a photo or document'}
+      title={scanStatus || 'Scan photo or document (TWAIN/eSCL/SANE)'}
       className={`p-3 rounded-xl transition-all relative ${
         isScanning
           ? 'bg-heritage-warmGold text-white animate-pulse'
@@ -207,8 +235,8 @@ const ScanButton: React.FC<ScanButtonProps> = ({ onScanComplete }) => {
       ) : (
         <span className="text-base">🖨️</span>
       )}
-      {scanStatus && !isScanning && (
-        <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-heritage-ink text-white text-[9px] px-2 py-1 rounded-lg whitespace-nowrap">
+      {scanStatus && (
+        <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-heritage-ink text-white text-[9px] px-2 py-1 rounded-lg whitespace-nowrap pointer-events-none">
           {scanStatus}
         </span>
       )}
