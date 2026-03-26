@@ -22,6 +22,7 @@ async function fetchEphemeralToken(subjectName: string): Promise<{
   token: string;
   ws_url: string;
   model: string;
+  system_prompt: string;
 }> {
   const res = await fetch(CASCADE_URL, {
     method: 'POST',
@@ -190,7 +191,7 @@ export function useGeminiLive(config: ConnieSessionConfig) {
       // Get ephemeral token + ws_url from Supabase edge function
       const subjectName = config.subjectName || 'their loved one';
       console.log('[Connie] Fetching ephemeral token for:', subjectName);
-      const { ws_url, model } = await fetchEphemeralToken(subjectName);
+      const { ws_url, model, system_prompt } = await fetchEphemeralToken(subjectName);
       console.log('[Connie] Token received — connecting via v1alpha WebSocket');
 
       // Set up audio contexts
@@ -213,7 +214,7 @@ export function useGeminiLive(config: ConnieSessionConfig) {
               },
             },
             system_instruction: {
-              parts: [{ text: buildSystemPrompt(config) }],
+              parts: [{ text: system_prompt || buildSystemPrompt(config) }],
             },
             tools: [{ function_declarations: [navigateToDecl, createStoryDecl, requestPhotosDecl] }],
             input_audio_transcription: {},
