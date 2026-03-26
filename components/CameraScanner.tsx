@@ -94,12 +94,17 @@ const CameraScanner: React.FC<CameraScannerProps> = ({ onScanComplete, onClose, 
   const [preview, setPreview] = useState<string | null>(null);
   const [bridgeOnline, setBridgeOnline] = useState<boolean | null>(null);
   const [scannerIp, setScannerIp] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('storyscribe_scan_prefs') || '{}').preferredIp || '192.168.1.169'; }
-    catch { return '192.168.1.169'; }
+    try { return JSON.parse(localStorage.getItem('storyscribe_scan_prefs') || '{}').preferredIp || ''; }
+    catch { return ''; }
   });
+  const [discoveredScanners, setDiscoveredScanners] = useState<{ip: string; name: string; protocol: string}[]>([]);
+  const [selectedScanner, setSelectedScanner] = useState<string>('');
+  const [showManualIp, setShowManualIp] = useState(false);
 
-  // Bridge URL helper — uses LAN IP over HTTPS (localhost blocked from Firebase/PWA)
-  const getBridgeUrl = (ip?: string) => `https://${ip || scannerIp}:8585`;
+  // Bridge URL — LAN IP over HTTPS (localhost blocked from Firebase/PWA)
+  const BRIDGE_IP = '192.168.1.169';
+  const getBridgeUrl = () => `https://${BRIDGE_IP}:8585`;
+  const getActiveScannerIp = () => selectedScanner || scannerIp || '';
   const [pendingResult, setPendingResult] = useState<ScanResult | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -107,13 +112,50 @@ const CameraScanner: React.FC<CameraScannerProps> = ({ onScanComplete, onClose, 
   const streamRef = useRef<MediaStream | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // Check FlowHub bridge
+  // Check FlowHub bridge + auto-discover scanners
   useEffect(() => {
-    // Try LAN IP over HTTPS — localhost is blocked from secure origins (Firebase/PWA)
-    const bridgeUrl = `https://${scannerIp || '192.168.1.169'}:8585`;
+    const bridgeUrl = getBridgeUrl();
+    // Health check
     fetch(`${bridgeUrl}/health`, { signal: AbortSignal.timeout(3000) })
       .then(r => r.ok ? r.json() : null)
-      .then(d => setBridgeOnline(!!d))
+      .then(async d => {
+        setBridgeOnline(!!d);
+        if (!d) return;
+        // Auto-discover scanners
+        try {
+          const scanRes = await fetch(`${bridgeUrl}/api/scanners`, { signal: AbortSignal.timeout(4000) });
+          if (scanRes.ok) {
+            const data = await scanRes.json();
+            const scanners = (data.scanners || data || []).map((s: any) => ({
+              ip: s.ip || s.address || '',
+              name: s.name || s.model || s.id || 'Scanner',
+              protocol: s.protocol || 'escl',
+            })).filter((s: any) => s.ip);
+            setDiscoveredScanners(scanners);
+            // Auto-select first discovered scanner if none saved
+            const saved = JSON.parse(localStorage.getItem('storyscribe_scan_prefs') || '{}').preferredIp || '';
+            if (!saved && scanners.length > 0) {
+              setSelectedScanner(scanners[0].ip);
+            } else if (saved) {
+              setSelectedScanner(saved);
+            }
+          }
+          // Also check TWAIN
+          const twainRes = await fetch(`${bridgeUrl}/api/twain/scanners`, { signal: AbortSignal.timeout(3000) });
+          if (twainRes.ok) {
+            const data = await twainRes.json();
+            const twainScanners = (data.scanners || data.sources || data || []).map((s: any) => ({
+              ip: s.name || s,
+              name: s.name || s,
+              protocol: 'twain',
+            })).filter((s: any) => s.ip);
+            setDiscoveredScanners(prev => [...prev, ...twainScanners]);
+            if (!selectedScanner && twainScanners.length > 0) {
+              setSelectedScanner(twainScanners[0].ip);
+            }
+          }
+        } catch (e) { console.warn('[Scanner] Discovery failed:', e); }
+      })
       .catch(() => setBridgeOnline(false));
   }, []);
 
@@ -190,11 +232,11 @@ const CameraScanner: React.FC<CameraScannerProps> = ({ onScanComplete, onClose, 
     setStatus('Connecting to scanner...');
     try {
       const { scan } = await import('../services/scanService');
+      const activeIp = getActiveScannerIp();
       const result = await scan({
         resolution: 300,
         colorMode: isDoc ? 'grayscale' : 'color',
-        scannerIp: scannerIp || '192.168.1.169',
-        bridgeUrl: getBridgeUrl(),
+        scannerIp: activeIp || undefined,
       }, (msg) => setStatus(msg));
       await processImage(result.base64, result.mimeType);
     } catch (e: any) {
@@ -294,31 +336,88 @@ const CameraScanner: React.FC<CameraScannerProps> = ({ onScanComplete, onClose, 
                 </button>
                 <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
 
-                {/* Scanner */}
-                <button
-                  onClick={() => {
-                    if (bridgeOnline) {
-                      handleScan();
-                    } else {
-                      setMode('scanning');
-                      setStatus('FlowHub bridge not detected. Enter scanner IP for direct eSCL scan, or start flowhub_bridge.py for TWAIN/USB scanning.');
-                    }
-                  }}
-                  className="w-full flex items-center gap-4 p-4 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-amber-600/40 rounded-2xl transition-all group"
-                >
-                  <span className="text-2xl">🖨️</span>
-                  <div className="text-left">
-                    <p className="text-white text-sm font-semibold flex items-center gap-2">
-                      Use Scanner
-                      {bridgeOnline === true && <span className="text-[9px] px-1.5 py-0.5 bg-green-500/20 text-green-400 rounded-full font-bold">READY</span>}
-                      {bridgeOnline === false && <span className="text-[9px] px-1.5 py-0.5 bg-white/10 text-white/30 rounded-full font-bold">OFFLINE</span>}
-                    </p>
-                    <p className="text-white/40 text-xs">
-                      {bridgeOnline ? 'TWAIN/USB or eSCL network scanner via FlowHub' : 'Start FlowHub bridge or enter scanner IP'}
-                    </p>
-                  </div>
-                  <span className="ml-auto text-white/20 group-hover:text-white/40">›</span>
-                </button>
+                {/* Scanner — with auto-discovery */}
+                <div className="w-full rounded-2xl border border-white/10 overflow-hidden">
+                  {/* Scanner header */}
+                  <button
+                    onClick={() => {
+                      if (bridgeOnline && (selectedScanner || discoveredScanners.length > 0)) {
+                        handleScan();
+                      } else if (bridgeOnline) {
+                        setMode('scanning');
+                        setStatus('No scanners discovered. Enter scanner IP manually.');
+                      } else {
+                        setMode('scanning');
+                        setStatus('FlowHub bridge not detected. Start flowhub_bridge.py on your PC, then visit https://192.168.1.169:8585/health to trust the certificate.');
+                      }
+                    }}
+                    className="w-full flex items-center gap-4 p-4 bg-white/5 hover:bg-white/10 transition-all group"
+                  >
+                    <span className="text-2xl">🖨️</span>
+                    <div className="text-left flex-1">
+                      <p className="text-white text-sm font-semibold flex items-center gap-2">
+                        Use Scanner
+                        {bridgeOnline === true && discoveredScanners.length > 0 && <span className="text-[9px] px-1.5 py-0.5 bg-green-500/20 text-green-400 rounded-full font-bold">READY</span>}
+                        {bridgeOnline === true && discoveredScanners.length === 0 && <span className="text-[9px] px-1.5 py-0.5 bg-amber-500/20 text-amber-400 rounded-full font-bold">BRIDGE ON</span>}
+                        {bridgeOnline === false && <span className="text-[9px] px-1.5 py-0.5 bg-white/10 text-white/30 rounded-full font-bold">OFFLINE</span>}
+                      </p>
+                      <p className="text-white/40 text-xs">
+                        {bridgeOnline && selectedScanner ? `Selected: ${discoveredScanners.find(s => s.ip === selectedScanner)?.name || selectedScanner}` : bridgeOnline ? 'Tap to scan' : 'Start FlowHub bridge to enable'}
+                      </p>
+                    </div>
+                    <span className="ml-auto text-white/20 group-hover:text-white/40">›</span>
+                  </button>
+
+                  {/* Discovered scanners list */}
+                  {bridgeOnline && discoveredScanners.length > 0 && (
+                    <div className="border-t border-white/5 p-3 space-y-1.5">
+                      {discoveredScanners.map(s => (
+                        <button
+                          key={s.ip}
+                          onClick={() => {
+                            setSelectedScanner(s.ip);
+                            try { localStorage.setItem('storyscribe_scan_prefs', JSON.stringify({ preferredIp: s.ip })); } catch {}
+                          }}
+                          className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left transition-all ${selectedScanner === s.ip ? 'bg-amber-600/20 border border-amber-600/30' : 'bg-white/5 hover:bg-white/10 border border-transparent'}`}
+                        >
+                          <span className="text-sm">{s.protocol === 'twain' ? '🔌' : '📡'}</span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-white text-xs font-semibold truncate">{s.name}</p>
+                            <p className="text-white/30 text-[10px]">{s.protocol.toUpperCase()} · {s.ip}</p>
+                          </div>
+                          {selectedScanner === s.ip && <span className="text-amber-400 text-xs">✓</span>}
+                        </button>
+                      ))}
+                      <button
+                        onClick={() => setShowManualIp(v => !v)}
+                        className="w-full text-center text-white/25 text-[10px] py-1 hover:text-white/40 transition-colors"
+                      >
+                        {showManualIp ? '▲ Hide manual IP' : '+ Enter IP manually'}
+                      </button>
+                      {showManualIp && (
+                        <div className="flex gap-2 pt-1">
+                          <input
+                            type="text"
+                            value={scannerIp}
+                            onChange={e => setScannerIp(e.target.value)}
+                            placeholder="192.168.1.x"
+                            className="flex-1 bg-white/10 border border-white/20 rounded-xl px-3 py-2 text-white text-xs outline-none focus:border-amber-600/60"
+                          />
+                          <button
+                            onClick={() => {
+                              if (scannerIp) {
+                                setSelectedScanner(scannerIp);
+                                try { localStorage.setItem('storyscribe_scan_prefs', JSON.stringify({ preferredIp: scannerIp })); } catch {}
+                                setShowManualIp(false);
+                              }
+                            }}
+                            className="px-3 py-2 bg-amber-600 text-white rounded-xl text-xs font-bold"
+                          >Set</button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}
