@@ -201,8 +201,8 @@ export const ConnieFullScreen: React.FC<ConnieFullScreenProps> = ({
     setShowCreatePrompt(false);
     const transcript = getTranscript();
     disconnect();
+    onFinish({ transcript }); // ALWAYS save transcript first
     if (onCreateStory) onCreateStory(createSubjectName);
-    else onFinish({ transcript });
   };
 
   // ── Status label ──────────────────────────────────────────────────────────────

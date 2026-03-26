@@ -16,7 +16,13 @@
 // If bridge is NOT running, falls back to direct eSCL (same-network only)
 // ============================================
 
-const BRIDGE_BASE = 'http://localhost:8585';
+// LAN IP used over HTTPS — localhost is blocked from secure origins (Firebase/PWA)
+// User's FlowHub bridge IP — saved in localStorage or defaults to LAN IP
+const getDefaultBridgeIp = () => {
+  try { return JSON.parse(localStorage.getItem('storyscribe_scan_prefs') || '{}').preferredIp || '192.168.1.169'; }
+  catch { return '192.168.1.169'; }
+};
+const BRIDGE_BASE = `https://${getDefaultBridgeIp()}:8585`;
 const BRIDGE_TIMEOUT_MS = 45000; // 45s — TWAIN scans can be slow
 
 // ─── Types ───────────────────────────────────────────────────────────────────

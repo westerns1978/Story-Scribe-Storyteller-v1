@@ -94,9 +94,12 @@ const CameraScanner: React.FC<CameraScannerProps> = ({ onScanComplete, onClose, 
   const [preview, setPreview] = useState<string | null>(null);
   const [bridgeOnline, setBridgeOnline] = useState<boolean | null>(null);
   const [scannerIp, setScannerIp] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('storyscribe_scan_prefs') || '{}').preferredIp || ''; }
-    catch { return ''; }
+    try { return JSON.parse(localStorage.getItem('storyscribe_scan_prefs') || '{}').preferredIp || '192.168.1.169'; }
+    catch { return '192.168.1.169'; }
   });
+
+  // Bridge URL helper — uses LAN IP over HTTPS (localhost blocked from Firebase/PWA)
+  const getBridgeUrl = (ip?: string) => `https://${ip || scannerIp}:8585`;
   const [pendingResult, setPendingResult] = useState<ScanResult | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -106,7 +109,9 @@ const CameraScanner: React.FC<CameraScannerProps> = ({ onScanComplete, onClose, 
 
   // Check FlowHub bridge
   useEffect(() => {
-    fetch('http://localhost:8585/health', { signal: AbortSignal.timeout(2500) })
+    // Try LAN IP over HTTPS — localhost is blocked from secure origins (Firebase/PWA)
+    const bridgeUrl = `https://${scannerIp || '192.168.1.169'}:8585`;
+    fetch(`${bridgeUrl}/health`, { signal: AbortSignal.timeout(3000) })
       .then(r => r.ok ? r.json() : null)
       .then(d => setBridgeOnline(!!d))
       .catch(() => setBridgeOnline(false));
@@ -188,7 +193,8 @@ const CameraScanner: React.FC<CameraScannerProps> = ({ onScanComplete, onClose, 
       const result = await scan({
         resolution: 300,
         colorMode: isDoc ? 'grayscale' : 'color',
-        scannerIp: scannerIp || undefined,
+        scannerIp: scannerIp || '192.168.1.169',
+        bridgeUrl: getBridgeUrl(),
       }, (msg) => setStatus(msg));
       await processImage(result.base64, result.mimeType);
     } catch (e: any) {
