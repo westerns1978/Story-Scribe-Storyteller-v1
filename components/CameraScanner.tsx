@@ -121,37 +121,32 @@ const CameraScanner: React.FC<CameraScannerProps> = ({ onScanComplete, onClose, 
       .then(async d => {
         setBridgeOnline(!!d);
         if (!d) return;
-        // Auto-discover scanners
+        // Auto-discover scanners from bridge
         try {
           const scanRes = await fetch(`${bridgeUrl}/api/scanners`, { signal: AbortSignal.timeout(4000) });
           if (scanRes.ok) {
             const data = await scanRes.json();
-            const scanners = (data.scanners || data || []).map((s: any) => ({
-              ip: s.ip || s.address || '',
-              name: s.name || s.model || s.id || 'Scanner',
-              protocol: s.protocol || 'escl',
-            })).filter((s: any) => s.ip);
+            const all = (data.scanners || data || []) as any[];
+            const scanners = all
+              .filter((s: any) => s.available !== false)
+              .map((s: any) => ({
+                // eSCL scanners have .ip, TWAIN scanners use .twainName as the "id"
+                ip: s.ip || s.address || s.twainName || s.name || '',
+                name: s.name || s.model || s.id || 'Scanner',
+                protocol: (s.protocol || 'escl').toLowerCase(),
+              }))
+              .filter((s: any) => s.ip);
             setDiscoveredScanners(scanners);
-            // Auto-select first discovered scanner if none saved
-            const saved = JSON.parse(localStorage.getItem('storyscribe_scan_prefs') || '{}').preferredIp || '';
-            if (!saved && scanners.length > 0) {
-              setSelectedScanner(scanners[0].ip);
-            } else if (saved) {
+            // Auto-select: prefer eSCL scanner, fall back to TWAIN, then saved pref
+            const saved = (() => { try { return JSON.parse(localStorage.getItem('storyscribe_scan_prefs') || '{}').preferredIp || ''; } catch { return ''; } })();
+            if (saved && scanners.find((s: any) => s.ip === saved)) {
               setSelectedScanner(saved);
-            }
-          }
-          // Also check TWAIN
-          const twainRes = await fetch(`${bridgeUrl}/api/twain/scanners`, { signal: AbortSignal.timeout(3000) });
-          if (twainRes.ok) {
-            const data = await twainRes.json();
-            const twainScanners = (data.scanners || data.sources || data || []).map((s: any) => ({
-              ip: s.name || s,
-              name: s.name || s,
-              protocol: 'twain',
-            })).filter((s: any) => s.ip);
-            setDiscoveredScanners(prev => [...prev, ...twainScanners]);
-            if (!selectedScanner && twainScanners.length > 0) {
-              setSelectedScanner(twainScanners[0].ip);
+            } else {
+              // Prefer eSCL (has real IP), then TWAIN
+              const escl = scanners.find((s: any) => s.protocol === 'escl');
+              const twain = scanners.find((s: any) => s.protocol === 'twain');
+              const best = escl || twain;
+              if (best) setSelectedScanner(best.ip);
             }
           }
         } catch (e) { console.warn('[Scanner] Discovery failed:', e); }
@@ -233,10 +228,13 @@ const CameraScanner: React.FC<CameraScannerProps> = ({ onScanComplete, onClose, 
     try {
       const { scan } = await import('../services/scanService');
       const activeIp = getActiveScannerIp();
+      // If TWAIN scanner selected (no IP format), use twainSource
+      const isTwain = activeIp && !activeIp.match(/^\d+\.\d+\.\d+\.\d+$/);
       const result = await scan({
         resolution: 300,
         colorMode: isDoc ? 'grayscale' : 'color',
-        scannerIp: activeIp || undefined,
+        scannerIp: isTwain ? undefined : (activeIp || undefined),
+        twainSource: isTwain ? activeIp : undefined,
       }, (msg) => setStatus(msg));
       await processImage(result.base64, result.mimeType);
     } catch (e: any) {
@@ -341,14 +339,13 @@ const CameraScanner: React.FC<CameraScannerProps> = ({ onScanComplete, onClose, 
                   {/* Scanner header */}
                   <button
                     onClick={() => {
-                      if (bridgeOnline && (selectedScanner || discoveredScanners.length > 0)) {
+                      if (bridgeOnline && selectedScanner) {
                         handleScan();
-                      } else if (bridgeOnline) {
-                        setMode('scanning');
-                        setStatus('No scanners discovered. Enter scanner IP manually.');
                       } else {
                         setMode('scanning');
-                        setStatus('FlowHub bridge not detected. Start flowhub_bridge.py on your PC, then visit https://192.168.1.169:8585/health to trust the certificate.');
+                        setStatus(bridgeOnline
+                          ? 'Bridge connected. Select a scanner or enter IP below.'
+                          : 'Bridge offline. Start flowhub_bridge.py, then visit https://192.168.1.169:8585/health in Chrome to trust the certificate.');
                       }
                     }}
                     className="w-full flex items-center gap-4 p-4 bg-white/5 hover:bg-white/10 transition-all group"
@@ -461,39 +458,53 @@ const CameraScanner: React.FC<CameraScannerProps> = ({ onScanComplete, onClose, 
                   <p className="text-white/60 text-sm text-center">{status}</p>
                 </div>
               )}
-              {(status.includes('not detected') || status.includes('offline') || status.includes('failed') || status.includes('FlowHub')) && (
-                <div className="space-y-3">
-                  <p className="text-white/50 text-xs leading-relaxed">{status}</p>
-                  <div className="space-y-2">
-                    <label className="text-white/40 text-xs font-semibold uppercase tracking-widest">Scanner IP (eSCL direct)</label>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={scannerIp}
-                        onChange={e => setScannerIp(e.target.value)}
-                        placeholder="192.168.1.x"
-                        className="flex-1 bg-white/10 border border-white/20 rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-amber-600/60"
-                      />
-                      <button
-                        onClick={() => {
-                          if (scannerIp) {
-                            try { localStorage.setItem('storyscribe_scan_prefs', JSON.stringify({ preferredIp: scannerIp })); } catch {}
-                            handleScan();
-                          }
-                        }}
-                        disabled={!scannerIp}
-                        className="px-4 py-2.5 bg-amber-600 text-white rounded-xl text-sm font-bold disabled:opacity-40 hover:bg-amber-500 transition-all"
-                      >
-                        Scan
-                      </button>
-                    </div>
-                    <p className="text-white/25 text-[10px]">
-                      Find your scanner's IP in its network settings or router. Epson DS-790WN is typically 192.168.1.145.
-                    </p>
+              <div className="space-y-4">
+                {status && <p className="text-white/50 text-xs leading-relaxed">{status}</p>}
+                <div className="space-y-2">
+                  <label className="text-white/40 text-xs font-semibold uppercase tracking-widest">Scanner IP Address</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={scannerIp}
+                      onChange={e => setScannerIp(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter' && scannerIp) { setSelectedScanner(scannerIp); try { localStorage.setItem('storyscribe_scan_prefs', JSON.stringify({ preferredIp: scannerIp })); } catch {} handleScan(); }}}
+                      placeholder="192.168.1.145"
+                      autoFocus
+                      className="flex-1 bg-white/10 border border-white/20 rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-amber-600/60"
+                    />
+                    <button
+                      onClick={() => {
+                        if (scannerIp) {
+                          setSelectedScanner(scannerIp);
+                          try { localStorage.setItem('storyscribe_scan_prefs', JSON.stringify({ preferredIp: scannerIp })); } catch {}
+                          handleScan();
+                        }
+                      }}
+                      disabled={!scannerIp}
+                      className="px-4 py-2.5 bg-amber-600 text-white rounded-xl text-sm font-bold disabled:opacity-40 hover:bg-amber-500 transition-all"
+                    >
+                      Scan
+                    </button>
                   </div>
-                  <button onClick={() => setMode('choose')} className="text-white/30 text-xs hover:text-white/50 transition-colors">← Back</button>
+                  <p className="text-white/25 text-[10px]">
+                    DS-790WN is typically 192.168.1.145 · DS-900WN is 192.168.1.236
+                  </p>
                 </div>
-              )}
+                {discoveredScanners.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-white/30 text-[10px] font-bold uppercase tracking-widest">Or choose discovered:</p>
+                    {discoveredScanners.map(s => (
+                      <button key={s.ip} onClick={() => { setSelectedScanner(s.ip); setScannerIp(s.ip); try { localStorage.setItem('storyscribe_scan_prefs', JSON.stringify({ preferredIp: s.ip })); } catch {}}}
+                        className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-left text-xs transition-all ${selectedScanner === s.ip ? 'bg-amber-600/20 text-amber-300 border border-amber-600/30' : 'bg-white/5 text-white/50 border border-transparent hover:bg-white/10'}`}>
+                        <span>{s.protocol === 'twain' ? '🔌' : '📡'}</span>
+                        <span className="flex-1 truncate">{s.name}</span>
+                        <span className="opacity-50">{s.ip}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <button onClick={() => setMode('choose')} className="text-white/30 text-xs hover:text-white/50 transition-colors">← Back</button>
+              </div>
             </div>
           )}
 
