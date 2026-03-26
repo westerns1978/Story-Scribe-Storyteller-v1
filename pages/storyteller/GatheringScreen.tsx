@@ -5,6 +5,11 @@ import { enhancePhoto, STYLE_INFO } from '../../services/photoEnhancement';
 import { NeuralAsset } from '../../types';
 import { storageService } from '../../services/storageService';
 import { fileToBase64, extractTextFromPdf } from '../../utils/fileUtils';
+import IntakeAgent from '../../components/IntakeAgent';
+
+const SUPABASE_URL = 'https://ldzzlndsspkyohvzfiiu.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxkenpsbmRzc3BreW9odnpmaWl1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE3MTEzMDUsImV4cCI6MjA3NzI4NzMwNX0.SK2Y7XMzeGQoVMq9KAmEN1vwy7RjtbIXZf6TyNneFnI';
+const CASCADE_URL = `${SUPABASE_URL}/functions/v1/story-cascade`;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -234,8 +239,6 @@ const TONE_ICON_MAP: Record<string, React.FC<{ size?: number; color?: string }>>
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const SUPABASE_URL = 'https://ldzzlndsspkyohvzfiiu.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxkenpsbmRzc3BreW9odnpmaWl1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE3MTEzMDUsImV4cCI6MjA3NzI4NzMwNX0.SK2Y7XMzeGQoVMq9KAmEN1vwy7RjtbIXZf6TyNneFnI';
 const CONNIE_PORTRAIT = 'https://storage.googleapis.com/westerns1978-digital-assets/Websites/story-scribe/connie-ai.png';
 
 const DECADES = ['1920s','1930s','1940s','1950s','1960s','1970s','1980s','1990s','2000s','2010s','2020s'];
@@ -397,7 +400,7 @@ export const GatheringScreen: React.FC<GatheringScreenProps> = ({
     setConnieGreeting(greetings[Math.floor(Math.random() * greetings.length)]);
   }, [subject]);
 
-  // ── Fetch Connie suggestion via Claude API ────────────────────────────────
+  // ── Fetch Connie suggestion via Supabase (NOT direct Anthropic — fixes CORS error) ──
   const fetchConnieSuggestion = useCallback(async (text: string) => {
     if (!text.trim() || text.trim().length < 30) return;
     if (text === lastAnalyzedText.current) return;
@@ -405,48 +408,29 @@ export const GatheringScreen: React.FC<GatheringScreenProps> = ({
     setIsFetchingSuggestion(true);
     setSuggestionDismissed(false);
     try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
+      const systemPrompt = `You are Connie, a warm memory curator for Story Scribe. Read what the family has written about "${subject}" and offer ONE warm, specific suggestion. Be human — never clinical.
+Respond ONLY with JSON: {"type":"tone"|"followup"|"opening"|"missing","text":"1-2 sentences","action":"tone id if tone","actionLabel":"button label","appendText":"follow-up question if followup"}
+Tone IDs: ai-decide,somber,warm,bittersweet,inspiring,funny,peaceful
+- Death/grief/loss → somber or bittersweet
+- Joyful/achievements → warm or inspiring  
+- Humor/quirks → funny
+- Missing birth year or hometown → missing
+- Rich detail present → opening line suggestion
+One suggestion only.`;
+      const res = await fetch(CASCADE_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`, 'apikey': SUPABASE_ANON_KEY },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 300,
-          system: `You are Connie, a warm and empathetic AI memory curator for Story Scribe. Your job is to gently help people tell a loved one's story. You read what they've written and offer ONE helpful suggestion. Be warm, brief, and human — never clinical.
-
-You must respond with ONLY a JSON object, no markdown:
-{
-  "type": "tone" | "followup" | "opening" | "missing",
-  "text": "your warm message to the user (1-2 sentences max)",
-  "action": "tone id if type=tone, else omit",
-  "actionLabel": "button label if applicable, else omit",
-  "appendText": "a question to add to their note if type=followup, else omit"
-}
-
-Tone IDs: ai-decide, somber, warm, bittersweet, inspiring, funny, peaceful
-
-Rules:
-- If the text mentions death, grief, loss, passing → suggest somber or bittersweet
-- If the text is celebratory, joyful, achievements → suggest warm or inspiring  
-- If the text mentions humor, funny stories, quirks → suggest funny
-- If missing birth year/decade or hometown → flag it as missing
-- If there's rich detail, offer a sample opening line → type=opening
-- Only one suggestion per response. Pick the most useful one.`,
-          messages: [{
-            role: 'user',
-            content: `The user is writing about "${subject}". Here is what they've written so far:
-
-"${text}"
-
-What one suggestion should Connie offer?`
-          }]
-        })
+          action: 'connie_chat',
+          system_prompt: systemPrompt,
+          subject,
+          messages: [{ role: 'user', parts: [{ text: `About "${subject}": "${text.substring(0, 500)}"` }] }],
+        }),
       });
       if (!res.ok) return;
       const data = await res.json();
-      const raw = data.content?.[0]?.text || '';
-      const clean = raw.replace(/```json\s*/gi, '').replace(/```/gi, '').trim();
-      const suggestion = JSON.parse(clean);
-      setConnieSuggestion(suggestion);
+      const raw = (data.text || '').replace(/```json\s*/gi, '').replace(/```/gi, '').trim();
+      if (raw) setConnieSuggestion(JSON.parse(raw));
     } catch (e) {
       console.warn('[Connie] Suggestion failed:', e);
     } finally {
@@ -767,6 +751,20 @@ What one suggestion should Connie offer?`
           ════════════════════════════════════════════════════════════ */}
           <div style={{ width:'100vw', height:'100%', overflowY:'auto', flexShrink:0 }}>
             <div style={{ maxWidth:780, margin:'0 auto', padding:'48px 48px 32px' }}>
+
+              <IntakeAgent
+                subject={subject}
+                transcript={material.transcript}
+                photoCount={material.artifacts.length}
+                photoFacts={extractedPhotoFacts.flatMap(pf => pf.verifiedFacts)}
+                importedTexts={material.importedTexts}
+                petMode={petMode}
+                quickNote={quickNote}
+                onTalkToConnie={onTalk}
+                onSuggestionApply={(appendText) => {
+                  setQuickNote(prev => prev + (prev.trim() ? '\n\n' : '') + appendText);
+                }}
+              />
 
               {/* Connie letter header */}
               <div style={{ display:'flex', alignItems:'flex-start', gap:20, marginBottom:32 }}>
