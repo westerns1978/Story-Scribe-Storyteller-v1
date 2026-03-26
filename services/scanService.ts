@@ -16,13 +16,11 @@
 // If bridge is NOT running, falls back to direct eSCL (same-network only)
 // ============================================
 
-// LAN IP used over HTTPS — localhost is blocked from secure origins (Firebase/PWA)
-// User's FlowHub bridge IP — saved in localStorage or defaults to LAN IP
-const getDefaultBridgeIp = () => {
-  try { return JSON.parse(localStorage.getItem('storyscribe_scan_prefs') || '{}').preferredIp || '192.168.1.169'; }
-  catch { return '192.168.1.169'; }
-};
-const BRIDGE_BASE = `https://${getDefaultBridgeIp()}:8585`;
+// Bridge = Windows PC running flowhub_bridge.py
+// Scanner = Epson DS-790WN on the network
+// These are TWO different IPs — never mix them up
+const BRIDGE_BASE = 'https://192.168.1.169:8585';  // flowhub_bridge.py machine
+const DEFAULT_SCANNER_IP = '192.168.1.145';          // Epson DS-790WN
 const BRIDGE_TIMEOUT_MS = 45000; // 45s — TWAIN scans can be slow
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -217,10 +215,10 @@ async function scanViaEscl(
   options: ScanOptions,
   onProgress: (msg: string) => void
 ): Promise<ScanResult> {
-  // Route through /api/scan on the bridge — uses bridge's own known-good XML
-  // This avoids the browser sending malformed eSCL XML through the proxy
-  onProgress('Connecting to network scanner…');
+  // POST to /api/scan on the bridge — bridge handles eSCL with correct XML
+  onProgress('Connecting to scanner…');
   const start = Date.now();
+  const scannerIp = ip || DEFAULT_SCANNER_IP;
 
   const res = await fetchWithTimeout(
     `${BRIDGE_BASE}/api/scan`,
@@ -228,7 +226,7 @@ async function scanViaEscl(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        scanner_ip: ip,
+        scanner_ip: scannerIp,
         resolution: options.resolution ?? 300,
         color_mode: options.colorMode ?? 'color',
         format: 'jpeg',
@@ -239,18 +237,18 @@ async function scanViaEscl(
 
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`eSCL scan failed (${res.status}): ${err.slice(0, 200)}`);
+    throw new Error(`Scan failed (${res.status}): ${err.slice(0, 200)}`);
   }
 
   const data = await res.json();
   const base64 = data.image_base64 || data.base64 || '';
-  if (!base64) throw new Error('No image data returned from scanner');
+  if (!base64) throw new Error('No image data returned');
 
   return {
     base64,
     mimeType: data.mime_type || 'image/jpeg',
     protocol: 'escl',
-    scannerName: `Epson @ ${ip}`,
+    scannerName: `Epson DS-790WN @ ${scannerIp}`,
     durationMs: Date.now() - start,
   };
 }
