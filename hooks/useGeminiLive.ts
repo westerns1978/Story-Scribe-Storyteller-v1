@@ -18,12 +18,13 @@ const SUPABASE_URL = 'https://ldzzlndsspkyohvzfiiu.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxkenpsbmRzc3BreW9odnpmaWl1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE3MTEzMDUsImV4cCI6MjA3NzI4NzMwNX0.SK2Y7XMzeGQoVMq9KAmEN1vwy7RjtbIXZf6TyNneFnI';
 const CASCADE_URL = `${SUPABASE_URL}/functions/v1/story-cascade`;
 
-async function fetchEphemeralToken(subjectName: string): Promise<{
-  token: string;
+async function fetchLiveSession(subjectName: string): Promise<{
   ws_url: string;
   model: string;
   system_prompt: string;
 }> {
+  // Get a direct WebSocket URL from the edge function
+  // Edge function holds the API key securely and returns the ws_url
   const res = await fetch(CASCADE_URL, {
     method: 'POST',
     headers: {
@@ -32,17 +33,17 @@ async function fetchEphemeralToken(subjectName: string): Promise<{
       'apikey': SUPABASE_ANON_KEY,
     },
     body: JSON.stringify({
-      action: 'get_token',
+      action: 'get_live_url',
       subject_name: subjectName,
       voice_name: 'Kore',
     }),
   });
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`get_token failed (${res.status}): ${err}`);
+    throw new Error(`get_live_url failed (${res.status}): ${err}`);
   }
   const data = await res.json();
-  if (!data.ws_url) throw new Error('get_token did not return ws_url');
+  if (!data.ws_url) throw new Error('No ws_url returned');
   return data;
 }
 
@@ -191,8 +192,8 @@ export function useGeminiLive(config: ConnieSessionConfig) {
       // Get ephemeral token + ws_url from Supabase edge function
       const subjectName = config.subjectName || 'their loved one';
       console.log('[Connie] Fetching ephemeral token for:', subjectName);
-      const { ws_url, model, system_prompt } = await fetchEphemeralToken(subjectName);
-      console.log('[Connie] Token received — connecting via v1alpha WebSocket');
+      const { ws_url, model, system_prompt } = await fetchLiveSession(subjectName);
+      console.log('[Connie] Got live URL — connecting...');
 
       // Set up audio contexts
       inputCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
