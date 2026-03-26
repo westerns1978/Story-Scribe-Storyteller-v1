@@ -217,27 +217,40 @@ async function scanViaEscl(
   options: ScanOptions,
   onProgress: (msg: string) => void
 ): Promise<ScanResult> {
-  // Use the existing esclService logic via the bridge
-  const { scanPage } = await import('./esclService');
+  // Route through /api/scan on the bridge — uses bridge's own known-good XML
+  // This avoids the browser sending malformed eSCL XML through the proxy
   onProgress('Connecting to network scanner…');
   const start = Date.now();
 
-  const esclOptions = {
-    resolution: options.resolution ?? 300,
-    colorMode: options.colorMode === 'color' ? 'RGB24' as const
-      : options.colorMode === 'blackwhite' ? 'BlackAndWhite1' as const
-      : 'Grayscale8' as const,
-    intent: 'Photo' as const,
-    format: 'image/jpeg' as const,
-  };
+  const res = await fetchWithTimeout(
+    `${BRIDGE_BASE}/api/scan`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        scanner_ip: ip,
+        resolution: options.resolution ?? 300,
+        color_mode: options.colorMode ?? 'color',
+        format: 'jpeg',
+      }),
+    },
+    BRIDGE_TIMEOUT_MS
+  );
 
-  const result = await scanPage(ip, esclOptions, onProgress);
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`eSCL scan failed (${res.status}): ${err.slice(0, 200)}`);
+  }
+
+  const data = await res.json();
+  const base64 = data.image_base64 || data.base64 || '';
+  if (!base64) throw new Error('No image data returned from scanner');
 
   return {
-    base64: result.base64,
-    mimeType: result.mimeType,
+    base64,
+    mimeType: data.mime_type || 'image/jpeg',
     protocol: 'escl',
-    scannerName: `Network Scanner @ ${ip}`,
+    scannerName: `Epson @ ${ip}`,
     durationMs: Date.now() - start,
   };
 }
