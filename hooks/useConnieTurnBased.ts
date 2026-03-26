@@ -1,22 +1,28 @@
 /**
  * useConnieTurnBased.ts
- * Chapter-aware Connie voice — calls Gemini directly.
- * No Supabase edge function. Fast, simple, works on Cloud Run.
- *
- * Reads GEMINI_API_KEY from AI Studio Secrets (injected at runtime).
+ * Chapter-aware Connie voice — routes through Supabase edge functions.
+ * transcribe_audio, connie_chat, and narrate all go through story-cascade.
+ * No API keys in the browser.
  */
 import { useState, useRef, useCallback, useMemo } from 'react';
-import { GoogleGenAI, Modality } from "@google/genai";
 
-const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
+// ─── Supabase edge function config ─────────────────────────────────────────────
+const SUPABASE_URL = 'https://ldzzlndsspkyohvzfiiu.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxkenpsbmRzc3BreW9odnpmaWl1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE3MTEzMDUsImV4cCI6MjA3NzI4NzMwNX0.SK2Y7XMzeGQoVMq9KAmEN1vwy7RjtbIXZf6TyNneFnI';
+const CASCADE_URL = `${SUPABASE_URL}/functions/v1/story-cascade`;
 
-function getApiKey(): string {
-  return (process.env as any).GEMINI_API_KEY
-    || (process.env as any).API_KEY
-    || (window as any).GEMINI_API_KEY
-    || (window as any).API_KEY
-    || (globalThis as any).GEMINI_API_KEY
-    || '';
+async function cascadeCall(action: string, params: Record<string, any>): Promise<any> {
+  const res = await fetch(CASCADE_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      'apikey': SUPABASE_ANON_KEY,
+    },
+    body: JSON.stringify({ action, ...params }),
+  });
+  if (!res.ok) throw new Error(`cascade ${action} failed (${res.status}): ${await res.text()}`);
+  return res.json();
 }
 
 // ─── Chapter guidance ─────────────────────────────────────────────────────────
@@ -114,12 +120,9 @@ RULES:
 ${config.existingTranscript ? `\nPREVIOUS CONTEXT:\n${config.existingTranscript}` : ''}`;
 }
 
-// ─── Transcribe audio blob via Gemini ────────────────────────────────────────
+// ─── Transcribe audio blob via Supabase edge function ────────────────────────
 async function transcribeAudioDirect(blob: Blob): Promise<string> {
-  const key = getApiKey();
-  const ai = new GoogleGenAI({ apiKey: key });
   const buf = await blob.arrayBuffer();
-  // Safe base64 conversion — spread operator overflows call stack on large audio
   const bytes = new Uint8Array(buf);
   let binary = '';
   const chunkSize = 8192;
@@ -127,91 +130,38 @@ async function transcribeAudioDirect(blob: Blob): Promise<string> {
     binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
   }
   const base64Audio = btoa(binary);
-
-  const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents: [{
-      parts: [
-        { inlineData: { mimeType: blob.type || 'audio/webm', data: base64Audio } },
-        { text: 'Transcribe this audio accurately. Return only the transcription, nothing else.' }
-      ]
-    }]
+  const data = await cascadeCall('transcribe_audio', {
+    audio_base64: base64Audio,
+    mime_type: blob.type || 'audio/webm',
   });
-
-  return response.text?.trim() || '';
+  return data.text?.trim() || '';
 }
 
-// ─── Get Connie's text response via Gemini ────────────────────────────────────
+// ─── Get Connie's text response via Supabase edge function ───────────────────
 async function getConnieResponseDirect(
   systemPrompt: string,
   history: { role: string; parts: { text: string }[] }[]
 ): Promise<{ text: string; functionCall?: { name: string; args: any } }> {
-  const key = getApiKey();
-  const ai = new GoogleGenAI({ apiKey: key });
-
-  const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents: history,
-    config: {
-      systemInstruction: systemPrompt,
-      tools: [{
-        functionDeclarations: [
-          {
-            name: 'request_photos',
-            description: 'Ask the user to upload photos.',
-            parameters: { type: 'OBJECT', properties: { reason: { type: 'STRING' } }, required: ['reason'] }
-          },
-          {
-            name: 'create_story',
-            description: 'Signal ready to weave the story after 5+ substantive exchanges.',
-            parameters: { type: 'OBJECT', properties: { subject_name: { type: 'STRING' }, confidence: { type: 'STRING' } }, required: ['subject_name'] }
-          },
-          {
-            name: 'save_progress',
-            description: 'Save conversation so user can return later.',
-            parameters: { type: 'OBJECT', properties: { summary: { type: 'STRING' } }, required: ['summary'] }
-          }
-        ]
-      }],
-      temperature: 0.8,
-      maxOutputTokens: 300
-    }
+  const data = await cascadeCall('connie_chat', {
+    system_prompt: systemPrompt,
+    messages: history,
   });
-
-  const parts = response.candidates?.[0]?.content?.parts || [];
-  const textPart = parts.find((p: any) => p.text);
-  const fnPart = response.functionCalls?.[0];
-
   return {
-    text: textPart?.text?.trim() || "Tell me more — what do you remember most vividly?",
-    functionCall: fnPart ? { name: fnPart.name, args: fnPart.args } : undefined,
+    text: data.text?.trim() || "Tell me more — what do you remember most vividly?",
+    functionCall: data.function_call || undefined,
   };
 }
 
-// ─── TTS via Gemini ───────────────────────────────────────────────────────────
+// ─── TTS via Supabase edge function ──────────────────────────────────────────
 async function speakTextDirect(text: string): Promise<string | null> {
-  const key = getApiKey();
-  const ai = new GoogleGenAI({ apiKey: key });
   try {
-    const response = await Promise.race([
-      ai.models.generateContent({
-        model: "gemini-2.5-flash-preview-tts",
-        contents: [{ parts: [{ text }] }],
-        config: {
-          responseModalities: [Modality.AUDIO],
-          speechConfig: {
-            voiceConfig: {
-              prebuiltVoiceConfig: { voiceName: 'Kore' },
-            },
-          },
-        },
-      }),
+    const data = await Promise.race([
+      cascadeCall('narrate', { text, voice_name: 'Kore' }),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('TTS timeout')), 15000)
       ),
     ]) as any;
-    const pcm = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    return pcm ? pcmToWav(pcm) : null;
+    return data.audio ? pcmToWav(data.audio) : null;
   } catch (err) {
     console.warn('[TTS] failed or timed out — text already shown:', err);
     return null;

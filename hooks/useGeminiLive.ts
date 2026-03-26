@@ -1,8 +1,51 @@
-import { useState, useRef, useCallback } from 'react';
-import { GoogleGenAI, LiveServerMessage, Modality, Blob as GenAIBlob, FunctionDeclaration, Type } from '@google/genai';
+// hooks/useGeminiLive.ts
+// ============================================
+// Connie Live Voice — Ephemeral Token Edition
+// ============================================
+// FIXED: No longer uses process.env.API_KEY or hardcoded keys.
+// All voice connections go through Supabase get_token action which:
+//   1. Creates ephemeral token via v1alpha endpoint (correct)
+//   2. Returns pre-built ws_url with correct Constrained endpoint
+//   3. Frontend uses ws_url directly — no URL construction
+// ============================================
 
-const STORY_CASCADE_URL = 'https://ldzzlndsspkyohvzfiiu.supabase.co/functions/v1/story-cascade';
+import { useState, useRef, useCallback, useEffect } from 'react';
+import { FunctionDeclaration, Type } from '@google/genai';
+
+// ─── Supabase edge function config ───────────────────────────────────────────
+
+const SUPABASE_URL = 'https://ldzzlndsspkyohvzfiiu.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxkenpsbmRzc3BreW9odnpmaWl1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE3MTEzMDUsImV4cCI6MjA3NzI4NzMwNX0.SK2Y7XMzeGQoVMq9KAmEN1vwy7RjtbIXZf6TyNneFnI';
+const CASCADE_URL = `${SUPABASE_URL}/functions/v1/story-cascade`;
+
+async function fetchEphemeralToken(subjectName: string): Promise<{
+  token: string;
+  ws_url: string;
+  model: string;
+}> {
+  const res = await fetch(CASCADE_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      'apikey': SUPABASE_ANON_KEY,
+    },
+    body: JSON.stringify({
+      action: 'get_token',
+      subject_name: subjectName,
+      voice_name: 'Kore',
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`get_token failed (${res.status}): ${err}`);
+  }
+  const data = await res.json();
+  if (!data.ws_url) throw new Error('get_token did not return ws_url');
+  return data;
+}
+
+// ─── Audio helpers ────────────────────────────────────────────────────────────
 
 function encode(bytes: Uint8Array): string {
   let binary = '';
@@ -17,325 +60,391 @@ function decode(base64: string): Uint8Array {
   return bytes;
 }
 
-async function decodeAudioData(data: Uint8Array, ctx: AudioContext, sampleRate: number, numChannels: number): Promise<AudioBuffer> {
-  const dataInt16 = new Int16Array(data.buffer);
-  const frameCount = dataInt16.length / numChannels;
-  const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
-  for (let ch = 0; ch < numChannels; ch++) {
-    const channelData = buffer.getChannelData(ch);
-    for (let i = 0; i < frameCount; i++) channelData[i] = dataInt16[i * numChannels + ch] / 32768.0;
+async function decodeAudioChunk(
+  data: Uint8Array,
+  ctx: AudioContext,
+  sampleRate = 24000,
+  channels = 1,
+): Promise<AudioBuffer> {
+  const int16 = new Int16Array(data.buffer);
+  const frameCount = int16.length / channels;
+  const buf = ctx.createBuffer(channels, frameCount, sampleRate);
+  for (let c = 0; c < channels; c++) {
+    const ch = buf.getChannelData(c);
+    for (let i = 0; i < frameCount; i++) ch[i] = int16[i * channels + c] / 32768.0;
   }
-  return buffer;
+  return buf;
 }
 
-// ─── Function declarations (Connie controls the UI) ───────────────────────────
-const request_photos: FunctionDeclaration = {
-  name: 'request_photos',
-  description: 'Ask the user to upload photos of the person being remembered. Call this when photos would enrich the story — after learning about their appearance, home, or key life moments.',
-  parameters: { type: Type.OBJECT, properties: { reason: { type: Type.STRING, description: 'Brief reason why photos would help right now' } }, required: ['reason'] },
-};
+// ─── Function declarations Connie can call ───────────────────────────────────
 
-const create_story: FunctionDeclaration = {
-  name: 'create_story',
-  description: 'Signal that you have gathered enough memories and are ready to weave the story. Only call this after at least 5 substantive exchanges covering childhood, family, work, and personal character. Never call this prematurely.',
+const navigateToDecl: FunctionDeclaration = {
+  name: 'navigateTo',
   parameters: {
     type: Type.OBJECT,
+    description: 'Navigate to a view in the Story Scribe app.',
+    properties: { view: { type: Type.STRING, description: 'View name to navigate to.' } },
+    required: ['view'],
+  },
+};
+
+const createStoryDecl: FunctionDeclaration = {
+  name: 'createFinalStory',
+  parameters: {
+    type: Type.OBJECT,
+    description: 'Signal that Connie has gathered enough to create the story. Call after 5+ meaningful exchanges.',
     properties: {
-      subject_name: { type: Type.STRING, description: 'The full name of the person whose story is being preserved' },
-      confidence: { type: Type.STRING, enum: ['ready', 'could_use_more'], description: 'Whether you feel you have enough to create a rich story' },
+      subject_name: { type: Type.STRING, description: 'The name of the person being remembered.' },
+      confidence: { type: Type.STRING, description: 'How confident Connie is: high/medium/low' },
     },
     required: ['subject_name'],
   },
 };
 
-const save_progress: FunctionDeclaration = {
-  name: 'save_progress',
-  description: 'Save the conversation so far so the user can return later and continue. Call this if the user says they need to stop, take a break, or come back later.',
-  parameters: { type: Type.OBJECT, properties: { summary: { type: Type.STRING, description: 'A 1-2 sentence summary of what has been shared so far' } }, required: ['summary'] },
+const requestPhotosDecl: FunctionDeclaration = {
+  name: 'requestPhotos',
+  parameters: {
+    type: Type.OBJECT,
+    description: 'Ask the user to upload photos or documents.',
+    properties: { reason: { type: Type.STRING, description: 'Why photos would help the story.' } },
+    required: ['reason'],
+  },
 };
 
-const navigate: FunctionDeclaration = {
-  name: 'navigate',
-  description: 'Navigate the app to a different screen.',
-  parameters: { type: Type.OBJECT, properties: { destination: { type: Type.STRING } }, required: ['destination'] },
-};
+// ─── System prompt builder ────────────────────────────────────────────────────
 
-// ─── System prompt ─────────────────────────────────────────────────────────────
 function buildSystemPrompt(config: ConnieSessionConfig): string {
-  const subjectName = config.subjectName || 'your loved one';
-  const storytellerName = config.storytellerName || 'friend';
-  const language = config.language || 'English';
-  const resumeContext = config.resumeContext || '';
+  const subjectName = config.subjectName || 'their loved one';
+  const storytellerName = config.storytellerName || 'the family';
+  const resume = config.resumeContext ? `\n\nPREVIOUS CONTEXT:\n${config.resumeContext}` : '';
 
   return `You are Connie — a warm, unhurried, deeply compassionate AI companion whose sole purpose is to help preserve the life story of ${subjectName}.
 
-You are speaking with ${storytellerName}. Respond only in ${language}.
+You are speaking with ${storytellerName}. Your voice is gentle, your pace is slow, your questions are specific and unexpected.
 
-YOUR PERSONALITY:
-- You are like the wisest, warmest friend the family has — someone who genuinely cares, listens without rushing, and asks the questions no one else thinks to ask.
-- You speak gently, warmly, and with genuine curiosity. Never clinical. Never robotic. Never in lists.
-- You use the person's name (${subjectName}) naturally and often.
-- You reflect back what you hear before moving forward: "That's beautiful — so ${subjectName} was the kind of person who..." 
-- Short pauses and affirmations feel natural: "Mmm.", "I love that.", "Tell me more about that."
-- You have infinite patience. Never rush. Never move on too quickly.
+APPROACH:
+- Ask ONE question at a time. Never rush.
+- Hunt for sensory details: sounds, smells, textures, specific moments.
+- When they share something meaningful, acknowledge it before moving forward.
+- "Tell me more about that" is always better than the next question.
+- Find the details that make this person irreplaceable — the worn-through shoes, the rose garden, the specific laugh.
 
-YOUR INTERVIEW STRUCTURE — follow this arc, but naturally, not mechanically:
-1. OPEN WARMLY: "Hello, ${storytellerName}. I'm so glad you're here. I'm Connie, and I'm honored to help you preserve ${subjectName}'s story. Before we begin — how are you feeling today?" Listen. Acknowledge. Then: "Tell me — who is ${subjectName} to you?"
-2. EARLY LIFE: Childhood home, earliest memory, parents, siblings, neighborhood, school days.
-3. FORMATIVE MOMENTS: A challenge they overcame. Something that shaped who they became. A turning point.
-4. LOVE & FAMILY: How they met their partner (if applicable). What kind of parent/grandparent they were. How they showed love.
-5. WORK & PURPOSE: What they did. What they were proud of. What they built.
-6. CHARACTER & SPIRIT: What made them laugh. What they believed in. How others would describe them. A story that captures who they truly were.
-7. LEGACY: What they would want to be remembered for. A message they'd want to leave behind.
+OPENING: "Hello, ${storytellerName}. I'm so glad you're here. I'm Connie, and I'm honored to help preserve ${subjectName}'s story. Tell me — who is ${subjectName} to you?"
+
+TOOLS:
+- Use navigateTo to move the user to different app sections when helpful.
+- Use requestPhotos when photos would meaningfully enrich the story.
+- Use createFinalStory only after 5+ meaningful exchanges AND with the family's confirmation.
 
 RULES:
-- Ask ONE question at a time. Always. Never stack questions.
-- After each answer, reflect briefly before asking the next question.
-- When the moment feels right (after covering at least 5 of the 7 areas above), gently offer: "I feel like I'm beginning to truly know ${subjectName}. I think we have something beautiful to work with. Would you like me to begin weaving the story now? We can always add more later." If they say yes, call create_story.
-- If they seem to have lots of photos, say: "It sounds like you have some wonderful photos of ${subjectName}. Would you like to share a few? They'll help bring the story to life." Then call request_photos.
-- If they need to stop, call save_progress and say: "Your memories are safe. Come back whenever you're ready — I'll be right here."
-- Never break character. Never mention AI, Gemini, or models. You are simply Connie.
-- Never make up facts about ${subjectName}. Only use what the storyteller shares.
-
-${resumeContext ? `PREVIOUS SESSION CONTEXT — you already know the following about ${subjectName}. Acknowledge it warmly and continue from where you left off:\n${resumeContext}` : ''}
-
-Begin the conversation now with your warm opening.`;
+- Never mention AI, Gemini, or models. You are simply Connie.
+- Never invent facts. Only use what the family shares.
+- If asked about yourself, say only: "I'm Connie — I'm here to listen."${resume}`;
 }
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface ConnieSessionConfig {
-  storytellerName?: string;
   subjectName?: string;
-  language?: string;
-  resumeContext?: string; // Summary from a previous session
+  storytellerName?: string;
+  resumeContext?: string;
+  chapterContext?: string;
 }
+
+export interface ConnieLiveMessage {
+  role: 'user' | 'connie' | 'model';
+  text: string;
+  timestamp?: number;
+}
+
+// ─── Main hook ────────────────────────────────────────────────────────────────
 
 export function useGeminiLive(config: ConnieSessionConfig) {
   const [isListening, setIsListening] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
-  const [isVideoActive, setIsVideoActive] = useState(false);
-  const [messages, setMessages] = useState<{ role: 'user' | 'model'; text: string }[]>([]);
-  const [connectionError, setConnectionError] = useState<string | null>(null);
   const [isConnieSpeaking, setIsConnieSpeaking] = useState(false);
+  const [isVideoActive, setIsVideoActive] = useState(false);
+  const [messages, setMessages] = useState<ConnieLiveMessage[]>([]);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
 
-  const sessionRef = useRef<any>(null);
-  const mediaStreamRef = useRef<MediaStream | null>(null);
-  const inputAudioContextRef = useRef<AudioContext | null>(null);
-  const outputAudioContextRef = useRef<AudioContext | null>(null);
-  const outputNodeRef = useRef<GainNode | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const isConnectingRef = useRef(false); // storm guard
+  const inputCtxRef = useRef<AudioContext | null>(null);
+  const outputCtxRef = useRef<AudioContext | null>(null);
   const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
-  const nextStartTimeRef = useRef<number>(0);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const frameIntervalRef = useRef<number | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const audioSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
+  const nextStartTimeRef = useRef(0);
   const speakingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const frameIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const connect = async () => {
-    setConnectionError(null);
+  // ── Connect ────────────────────────────────────────────────────────────────
+  const connect = useCallback(async () => {
+    if (isConnectingRef.current || isListening) return;
+    isConnectingRef.current = true;
     setIsConnecting(true);
+    setConnectionError(null);
 
     try {
-      // Use the AI Studio API key directly — ephemeral token endpoint is not yet GA
-      const apiKey = process.env.API_KEY || (window as any).GEMINI_API_KEY || 'AIzaSyDUfGlQmbB9QaRlDtYENAqtSTyDQVD7avs';
-      if (!apiKey) throw new Error('No API key available. Please ensure an API key is configured.');
-      console.log('[Connie] Connecting with API key ✓');
+      // Get ephemeral token + ws_url from Supabase edge function
+      const subjectName = config.subjectName || 'their loved one';
+      console.log('[Connie] Fetching ephemeral token for:', subjectName);
+      const { ws_url, model } = await fetchEphemeralToken(subjectName);
+      console.log('[Connie] Token received — connecting via v1alpha WebSocket');
 
-      inputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
-      outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-      const outputNode = outputAudioContextRef.current.createGain();
-      outputNode.connect(outputAudioContextRef.current.destination);
-      outputNodeRef.current = outputNode;
-      nextStartTimeRef.current = 0;
+      // Set up audio contexts
+      inputCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+      outputCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
 
-      // Use the real WebSocket — Supabase interceptor wraps window.WebSocket
-      // and redirects ALL WebSocket connections through /api-proxy/ which breaks Gemini Live
-      const realWS = (window as any).__RealWebSocket || WebSocket;
-      const origWS = window.WebSocket;
-      window.WebSocket = realWS;
+      // Connect to Gemini Live via pre-built ws_url
+      const ws = new WebSocket(ws_url);
+      wsRef.current = ws;
 
-      const ai = new GoogleGenAI({ apiKey });
-
-      const session = await ai.live.connect({
-        model: 'gemini-live-2.5-flash-native-audio',
-        config: {
-          responseModalities: [Modality.AUDIO],
-          systemInstruction: buildSystemPrompt(config),
-          tools: [{ functionDeclarations: [request_photos, create_story, save_progress, navigate] }],
-          inputAudioTranscription: {},
-          outputAudioTranscription: {},
-          speechConfig: {
-            voiceConfig: {
-              prebuiltVoiceConfig: { voiceName: 'Kore' }, // Warm feminine voice
+      ws.onopen = () => {
+        // Send setup message as first message
+        ws.send(JSON.stringify({
+          setup: {
+            model,
+            generation_config: {
+              response_modalities: ['AUDIO'],
+              speech_config: {
+                voice_config: { prebuilt_voice_config: { voice_name: 'Kore' } },
+              },
             },
+            system_instruction: {
+              parts: [{ text: buildSystemPrompt(config) }],
+            },
+            tools: [{ function_declarations: [navigateToDecl, createStoryDecl, requestPhotosDecl] }],
+            input_audio_transcription: {},
+            output_audio_transcription: {},
           },
-        },
-        callbacks: {
-          onopen: async () => {
-            console.log('[Connie] Live session open ✓');
-            setIsConnecting(false);
-            setIsListening(true);
+        }));
 
-            try {
-              const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-              mediaStreamRef.current = stream;
+        setIsListening(true);
+        setIsConnecting(false);
+        isConnectingRef.current = false;
+        console.log('[Connie] Live session open ✓');
 
-              const inputCtx = inputAudioContextRef.current!;
-              if (inputCtx.state === 'suspended') await inputCtx.resume();
+        // Start microphone
+        navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+          mediaStreamRef.current = stream;
+          const source = inputCtxRef.current!.createMediaStreamSource(stream);
+          const processor = inputCtxRef.current!.createScriptProcessor(4096, 1, 1);
+          scriptProcessorRef.current = processor;
 
-              const source = inputCtx.createMediaStreamSource(stream);
-              const scriptProcessor = inputCtx.createScriptProcessor(4096, 1, 1);
-              scriptProcessorRef.current = scriptProcessor;
+          processor.onaudioprocess = (e) => {
+            if (ws.readyState !== WebSocket.OPEN) return;
+            const inputData = e.inputBuffer.getChannelData(0);
+            const int16 = new Int16Array(inputData.length);
+            for (let i = 0; i < inputData.length; i++) int16[i] = inputData[i] * 32768;
+            ws.send(JSON.stringify({
+              realtime_input: {
+                media_chunks: [{
+                  data: encode(new Uint8Array(int16.buffer)),
+                  mime_type: 'audio/pcm;rate=16000',
+                }],
+              },
+            }));
+          };
 
-              scriptProcessor.onaudioprocess = (event) => {
-                if (!sessionRef.current) return;
-                const inputData = event.inputBuffer.getChannelData(0);
-                const int16 = new Int16Array(inputData.length);
-                for (let i = 0; i < inputData.length; i++) {
-                  int16[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32768));
-                }
-                try {
-                  const pcmBlob: GenAIBlob = { data: encode(new Uint8Array(int16.buffer)), mimeType: 'audio/pcm;rate=16000' };
-                  sessionRef.current.sendRealtimeInput({ media: pcmBlob });
-                } catch (e) { /* session may have closed */ }
-              };
+          source.connect(processor);
+          processor.connect(inputCtxRef.current!.destination);
+          console.log('[Connie] Audio streaming started ✓');
+        }).catch(err => {
+          console.error('[Connie] Microphone access failed:', err);
+          setConnectionError('Microphone access denied.');
+        });
+      };
 
-              source.connect(scriptProcessor);
-              scriptProcessor.connect(inputCtx.destination);
-              console.log('[Connie] Audio streaming started ✓');
-            } catch (err) {
-              console.error('[Connie] Audio setup failed:', err);
-              setConnectionError('Microphone access denied or audio setup failed.');
-              setIsListening(false);
+      ws.onmessage = async (event) => {
+        let msg: any;
+        try {
+          msg = JSON.parse(event.data instanceof Blob ? await event.data.text() : event.data);
+        } catch { return; }
+
+        // Tool calls
+        if (msg.toolCall) {
+          for (const fc of msg.toolCall.functionCalls || []) {
+            console.log('[Connie] Tool call:', fc.name, fc.args);
+            // Dispatch to UI via custom events — ConnieFullScreen listens
+            window.dispatchEvent(new CustomEvent('connie-tool-call', {
+              detail: { name: fc.name, args: fc.args },
+            }));
+            if (fc.name === 'createFinalStory') {
+              window.dispatchEvent(new CustomEvent('connie-trigger-create', {
+                detail: fc.args,
+              }));
             }
-          },
-
-          onmessage: async (message: LiveServerMessage) => {
-            // ── Function calls from Connie ──────────────────────────────────
-            if (message.toolCall) {
-              for (const fc of message.toolCall.functionCalls) {
-                console.log('[Connie] Tool call:', fc.name, fc.args);
-                // Dispatch to UI — ConnieFullScreen listens for these
-                window.dispatchEvent(new CustomEvent('connie-action', {
-                  detail: { name: fc.name, args: fc.args }
-                }));
-                sessionRef.current?.sendToolResponse({
-                  functionResponses: [{ id: fc.id, name: fc.name, response: { result: 'Success' } }],
-                });
-              }
+            if (fc.name === 'requestPhotos') {
+              window.dispatchEvent(new CustomEvent('connie-request-photos', {
+                detail: fc.args,
+              }));
             }
+            // Send tool response
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({
+                tool_response: {
+                  function_responses: [{
+                    id: fc.id,
+                    name: fc.name,
+                    response: { result: 'Success' },
+                  }],
+                },
+              }));
+            }
+          }
+        }
 
-            // ── Audio output ────────────────────────────────────────────────
-            const audioPart = message.serverContent?.modelTurn?.parts?.find(
-              (p: any) => p.inlineData?.mimeType?.startsWith('audio/')
+        // Audio output
+        const audioPart = msg.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
+        if (audioPart && outputCtxRef.current) {
+          try {
+            const audioBuffer = await decodeAudioChunk(decode(audioPart), outputCtxRef.current);
+            nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outputCtxRef.current.currentTime);
+            const source = outputCtxRef.current.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(outputCtxRef.current.destination);
+            source.start(nextStartTimeRef.current);
+            nextStartTimeRef.current += audioBuffer.duration;
+            audioSourcesRef.current.add(source);
+
+            setIsConnieSpeaking(true);
+            if (speakingTimeoutRef.current) clearTimeout(speakingTimeoutRef.current);
+            speakingTimeoutRef.current = setTimeout(
+              () => setIsConnieSpeaking(false),
+              audioBuffer.duration * 1000 + 300,
             );
-            if (audioPart?.inlineData?.data && outputAudioContextRef.current && outputNodeRef.current) {
-              try {
-                const ctx = outputAudioContextRef.current;
-                if (ctx.state === 'suspended') await ctx.resume();
-                nextStartTimeRef.current = Math.max(nextStartTimeRef.current, ctx.currentTime);
-                const pcmBytes = decode(audioPart.inlineData.data);
-                const audioBuffer = await decodeAudioData(pcmBytes, ctx, 24000, 1);
-                const src = ctx.createBufferSource();
-                src.buffer = audioBuffer;
-                src.connect(outputNodeRef.current);
-                src.start(nextStartTimeRef.current);
-                nextStartTimeRef.current += audioBuffer.duration;
+          } catch (e) {
+            console.error('[Connie] Audio decode error:', e);
+          }
+        }
 
-                // Track speaking state for waveform animation
-                setIsConnieSpeaking(true);
-                if (speakingTimeoutRef.current) clearTimeout(speakingTimeoutRef.current);
-                speakingTimeoutRef.current = setTimeout(() => setIsConnieSpeaking(false), audioBuffer.duration * 1000 + 300);
-              } catch (e) {
-                console.error('[Connie] Audio decode error:', e);
-              }
-            }
+        // Transcriptions
+        if (msg.serverContent?.inputTranscription?.text) {
+          setMessages(prev => [...prev, {
+            role: 'user',
+            text: msg.serverContent.inputTranscription.text,
+            timestamp: Date.now(),
+          }]);
+        }
+        if (msg.serverContent?.outputTranscription?.text) {
+          setMessages(prev => [...prev, {
+            role: 'connie',
+            text: msg.serverContent.outputTranscription.text,
+            timestamp: Date.now(),
+          }]);
+        }
+      };
 
-            // ── Transcriptions ──────────────────────────────────────────────
-            const inputText = message.serverContent?.inputTranscription?.text;
-            if (inputText?.trim()) setMessages(prev => [...prev, { role: 'user', text: inputText }]);
-            const outputText = message.serverContent?.outputTranscription?.text;
-            if (outputText?.trim()) setMessages(prev => [...prev, { role: 'model', text: outputText }]);
-          },
+      ws.onerror = (e) => {
+        console.error('[Connie] WebSocket error:', e);
+        setConnectionError('Connection error — please try again.');
+        isConnectingRef.current = false;
+        setIsConnecting(false);
+      };
 
-          onclose: () => { setIsListening(false); setIsConnecting(false); setIsConnieSpeaking(false); },
-          onerror: (e: any) => {
-            console.error('[Connie] Error:', e);
-            setConnectionError('Connection lost. Tap the mic to reconnect.');
-            setIsListening(false);
-            setIsConnecting(false);
-            setIsConnieSpeaking(false);
-          },
-        },
-      });
-
-      sessionRef.current = session;
-      // Restore Supabase's WebSocket wrapper after Gemini session is established
-      window.WebSocket = origWS;
+      ws.onclose = (e) => {
+        console.log('[Connie] WebSocket closed:', e.code, e.reason);
+        setIsListening(false);
+        setIsConnecting(false);
+        setIsConnieSpeaking(false);
+        isConnectingRef.current = false;
+      };
 
     } catch (err: any) {
       console.error('[Connie] connect() failed:', err);
       setConnectionError(err.message || 'Failed to connect to Connie.');
       setIsConnecting(false);
+      isConnectingRef.current = false;
     }
-  };
+  }, [config]);
 
-  const disconnect = async () => {
+  // ── Disconnect ─────────────────────────────────────────────────────────────
+  const disconnect = useCallback(() => {
+    if (isConnectingRef.current) return;
+
+    scriptProcessorRef.current?.disconnect();
+    mediaStreamRef.current?.getTracks().forEach(t => t.stop());
+    if (inputCtxRef.current?.state !== 'closed') inputCtxRef.current?.close();
+    for (const src of audioSourcesRef.current) { try { src.stop(); } catch { /* ignore */ } }
+    audioSourcesRef.current.clear();
+    if (outputCtxRef.current?.state !== 'closed') outputCtxRef.current?.close();
+    if (wsRef.current) { try { wsRef.current.close(); } catch { /* ignore */ } wsRef.current = null; }
+    if (frameIntervalRef.current) clearInterval(frameIntervalRef.current);
+
+    nextStartTimeRef.current = 0;
     setIsListening(false);
     setIsConnecting(false);
     setIsConnieSpeaking(false);
-    stopVideo();
-    if (speakingTimeoutRef.current) clearTimeout(speakingTimeoutRef.current);
-    // Stop audio first to prevent "already closing" errors
-    try { scriptProcessorRef.current?.disconnect(); } catch {}
-    scriptProcessorRef.current = null;
-    try { mediaStreamRef.current?.getTracks().forEach(t => t.stop()); } catch {}
-    mediaStreamRef.current = null;
-    try { sessionRef.current?.close(); } catch {}
-    sessionRef.current = null;
-    nextStartTimeRef.current = 0;
-    // Close audio contexts last
-    try { await inputAudioContextRef.current?.close(); } catch {}
-    inputAudioContextRef.current = null;
-    try { await outputAudioContextRef.current?.close(); } catch {}
-    outputAudioContextRef.current = null;
-  };
+  }, []);
 
-  const startVideo = async () => {
+  // ── Send image to Connie ───────────────────────────────────────────────────
+  const sendImage = useCallback((base64: string, mimeType = 'image/jpeg') => {
+    if (wsRef.current?.readyState !== WebSocket.OPEN) return;
+    wsRef.current.send(JSON.stringify({
+      realtime_input: {
+        media_chunks: [{ data: base64, mime_type: mimeType }],
+      },
+    }));
+  }, []);
+
+  // ── Camera ─────────────────────────────────────────────────────────────────
+  const startCamera = useCallback(async (ref: React.RefObject<HTMLVideoElement>) => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
-      if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play(); }
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      if (ref.current) { ref.current.srcObject = stream; await ref.current.play(); }
+      videoRef.current = ref.current;
       setIsVideoActive(true);
-      frameIntervalRef.current = window.setInterval(() => {
-        if (canvasRef.current && videoRef.current && sessionRef.current) {
-          const canvas = canvasRef.current;
-          canvas.width = 640; canvas.height = 480;
-          canvas.getContext('2d')!.drawImage(videoRef.current, 0, 0, 640, 480);
-          const base64 = canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
-          sessionRef.current.sendRealtimeInput({ media: { mimeType: 'image/jpeg', data: base64 } });
-        }
-      }, 1000);
-    } catch (err) { console.error('[Connie] Camera error:', err); }
-  };
 
-  const stopVideo = () => {
-    if (frameIntervalRef.current) { clearInterval(frameIntervalRef.current); frameIntervalRef.current = null; }
+      // Send frames to Connie every 4s while connected
+      frameIntervalRef.current = setInterval(() => {
+        if (!ref.current || wsRef.current?.readyState !== WebSocket.OPEN) return;
+        const canvas = document.createElement('canvas');
+        canvas.width = ref.current.videoWidth;
+        canvas.height = ref.current.videoHeight;
+        canvas.getContext('2d')?.drawImage(ref.current, 0, 0);
+        const base64 = canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
+        sendImage(base64);
+      }, 4000);
+    } catch (err) {
+      console.error('[Connie] Camera error:', err);
+    }
+  }, [sendImage]);
+
+  const stopCamera = useCallback(() => {
+    if (frameIntervalRef.current) clearInterval(frameIntervalRef.current);
     if (videoRef.current?.srcObject) {
       (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
       videoRef.current.srcObject = null;
     }
     setIsVideoActive(false);
-  };
+  }, []);
 
-  const getTranscript = useCallback(() =>
-    messages.map(m => `${m.role === 'user' ? 'Storyteller' : 'Connie'}: ${m.text}`).join('\n'),
-    [messages]
-  );
+  // ── Get transcript ─────────────────────────────────────────────────────────
+  const getTranscript = useCallback(() => {
+    return messages
+      .map(m => `${m.role === 'user' ? 'Storyteller' : 'Connie'}: ${m.text}`)
+      .join('\n');
+  }, [messages]);
+
+  // ── Cleanup on unmount ─────────────────────────────────────────────────────
+  useEffect(() => {
+    return () => { disconnect(); };
+  }, [disconnect]);
 
   return {
-    connect, disconnect,
-    isListening, isConnecting, isVideoActive, isConnieSpeaking,
-    messages, connectionError,
-    startVideo, stopVideo,
-    videoRef, canvasRef,
+    connect,
+    disconnect,
+    sendImage,
+    startCamera,
+    stopCamera,
     getTranscript,
+    isListening,
+    isConnecting,
+    isVideoActive,
+    isConnieSpeaking,
+    messages,
+    connectionError,
   };
 }
