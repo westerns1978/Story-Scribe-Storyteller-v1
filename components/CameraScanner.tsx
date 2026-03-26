@@ -29,6 +29,9 @@ export interface ScanResult {
 interface CameraScannerProps {
   onScanComplete: (result: ScanResult) => void;
   onClose: () => void;
+  isOpen?: boolean;        // if provided, component only renders when true
+  mode?: 'auto' | 'camera' | 'upload' | 'scanner';
+  subjectName?: string;    // passed to analysis for better context
 }
 
 type Mode = 'choose' | 'camera' | 'uploading' | 'scanning' | 'analyzing' | 'preview';
@@ -84,7 +87,7 @@ async function analyzeImage(base64: string, mimeType: string, isDoc: boolean): P
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-const CameraScanner: React.FC<CameraScannerProps> = ({ onScanComplete, onClose }) => {
+const CameraScanner: React.FC<CameraScannerProps> = ({ onScanComplete, onClose, isOpen, mode: initialMode, subjectName }) => {
   const [mode, setMode] = useState<Mode>('choose');
   const [isDoc, setIsDoc] = useState(false);
   const [status, setStatus] = useState('');
@@ -461,6 +464,9 @@ const CameraScanner: React.FC<CameraScannerProps> = ({ onScanComplete, onClose }
       </div>
     </div>
   );
+
+  // If isOpen prop is provided, use it as a gate
+  if (typeof isOpen !== 'undefined' && !isOpen) return null;
 
   return overlay;
 };
