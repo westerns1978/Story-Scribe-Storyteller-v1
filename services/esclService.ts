@@ -31,7 +31,10 @@ export interface EsclScanOptions {
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
-const BRIDGE_BASE = 'http://localhost:8585';
+const BRIDGE_BASE = (() => {
+  try { return `https://${JSON.parse(localStorage.getItem('storyscribe_scan_prefs') || '{}').preferredIp || '192.168.1.169'}:8585`; }
+  catch { return 'https://192.168.1.169:8585'; }
+})();
 const BRIDGE_TIMEOUT = 30000; // 30s for scan operations
 const POLL_INTERVAL = 1500;   // poll every 1.5s
 const POLL_MAX = 20;          // give up after 30s
