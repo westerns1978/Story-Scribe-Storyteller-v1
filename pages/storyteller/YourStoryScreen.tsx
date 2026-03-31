@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { ActiveStory } from '../../types';
 import BookOpenIcon from '../../components/icons/BookOpenIcon';

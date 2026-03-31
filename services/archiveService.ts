@@ -40,6 +40,7 @@ async function supabaseUpsert(story: StoryArchiveItem): Promise<boolean> {
       session_id: rawId,
       storyteller_name: story.storytellerName || story.name || 'Unknown',
       title: `The Legacy of ${story.storytellerName || story.name || 'Someone Special'}`,
+      transcript: (story as any).transcript || '',
       narrative: story.narrative || '',
       extraction: story.extraction ?? null,
       storyboard: story.storyboard ?? null,
