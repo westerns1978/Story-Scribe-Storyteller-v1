@@ -219,13 +219,31 @@ const GatheringScreen: React.FC<GatheringScreenProps> = ({
   }, []);
 
   // ── Photo facts extraction ────────────────────────────────────────────────
+  // Convert any image to JPEG base64 for Gemini compatibility (WebP/HEIC/etc can cause 400s)
+  const imageToJpegBase64 = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        canvas.getContext('2d')?.drawImage(img, 0, 0);
+        URL.revokeObjectURL(url);
+        resolve(canvas.toDataURL('image/jpeg', 0.92).split(',')[1]);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Image load failed')); };
+      img.src = url;
+    });
+
   const extractPhotoFacts = async (file: File, assetId: string): Promise<PhotoFactExtraction | null> => {
     try {
-      const base64 = await fileToBase64(file);
+      // Always send as JPEG to avoid WebP/HEIC 400 errors from Gemini
+      const base64 = await imageToJpegBase64(file);
       const response = await fetch(CASCADE_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
-        body: JSON.stringify({ action: 'analyze_photo', image_base64: base64.split(',')[1], mime_type: file.type }),
+        body: JSON.stringify({ action: 'analyze_photo', image_base64: base64, mime_type: 'image/jpeg' }),
       });
       if (!response.ok) return null;
       const data = await response.json();
@@ -274,10 +292,40 @@ const GatheringScreen: React.FC<GatheringScreenProps> = ({
             }
           }).finally(() => setPendingAnalysis(n => Math.max(0, n - 1)));
 
-        } else if (file.type === 'application/pdf' || file.type === 'text/plain') {
-          const content = file.type === 'application/pdf' ? await extractTextFromPdf(file) : await file.text();
-          onText(file.name, content);
-          showToast(`Document added — ${file.name}`, 'success');
+        } else if (
+          file.type === 'application/pdf' ||
+          file.type === 'text/plain' ||
+          file.type === 'text/csv' ||
+          file.type === 'application/rtf' ||
+          file.type === 'text/rtf' ||
+          file.type === 'application/msword' ||
+          file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+          file.name.match(/\.(txt|rtf|doc|docx|csv|odt|pages)$/i)
+        ) {
+          let content = '';
+          try {
+            if (file.type === 'application/pdf') {
+              content = await extractTextFromPdf(file);
+            } else {
+              content = await file.text();
+            }
+          } catch {
+            content = '';
+          }
+          // Never pass empty or error strings to cascade — they poison the story
+          if (content.trim()) {
+            onText(file.name, content);
+            showToast(`Document added — ${file.name}`, 'success');
+          } else if (file.type === 'application/pdf') {
+            // Client extraction failed — upload as artifact for server-side Gemini analysis
+            try {
+              const asset = await storageService.uploadFile(file, { title: file.name, tags: ['document', 'pdf'] });
+              onPhotos([asset]);
+              showToast(`Document uploaded — AI will analyze it`, 'info');
+            } catch {
+              showToast(`Could not process ${file.name}`, 'error');
+            }
+          }
         }
       } catch { showToast(`Failed: ${file.name}`, 'error'); }
     }
@@ -380,7 +428,7 @@ const GatheringScreen: React.FC<GatheringScreenProps> = ({
           ref={fileInputRef}
           type="file"
           multiple
-          accept="image/*,application/pdf,text/plain"
+          accept="image/*,application/pdf,text/plain,text/csv,.doc,.docx,.txt,.rtf,.odt,.pages,.heic,.heif,.tiff,.bmp,.webp"
           onChange={handleFileUpload}
           style={{ display: 'none' }}
         />
