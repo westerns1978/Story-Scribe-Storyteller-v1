@@ -48,6 +48,7 @@ const App: React.FC = () => {
   const [language, setLanguage] = useState('en');
   const [narratorVoice, setNarratorVoice] = useState<'Kore' | 'Fenrir'>('Kore');
   const [petMode, setPetMode] = useState(false);
+  const [persona, setPersona] = useState<'curator' | 'keeper' | 'pet'>('curator');
   const [savedStories, setSavedStories] = useState<{ sessionId: string; storytellerName: string; savedAt: string }[]>([]);
   const [fullSavedStories, setFullSavedStories] = useState<StoryArchiveItem[]>([]);
   const [storiesLoading, setStoriesLoading] = useState(true);
@@ -110,11 +111,12 @@ const App: React.FC = () => {
   const handleLogin = (c: Customer) => login(c);
   const handleLogout = () => { logout(); window.location.href = '/'; };
 
-  const handleBegin = useCallback((name: string, lang: string, voice: 'Kore' | 'Fenrir' = 'Kore', isPet: boolean = false) => {
+  const handleBegin = useCallback((name: string, lang: string, voice: 'Kore' | 'Fenrir' = 'Kore', isPet: boolean = false, selectedPersona: 'curator' | 'keeper' | 'pet' = 'curator') => {
     setSubject(name || '');
     setLanguage(lang || 'en');
     setNarratorVoice(voice);
     setPetMode(isPet);
+    setPersona(isPet ? 'pet' : selectedPersona);
     setMaterial({ transcript: '', artifacts: [], importedTexts: [] });
     setActiveStory(null);
     setPhase('gathering');
@@ -426,6 +428,7 @@ const App: React.FC = () => {
               <GatheringScreen
                 subject={subject || 'a loved one'}
                 material={material}
+                persona={persona}
                 onTalk={() => setPhase('connie')}
                 onPhotos={handleAddPhotos}
                 onText={handleAddText}

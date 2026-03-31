@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 interface WelcomeScreenProps {
   activeStoryName?: string;
   onReturnToStory?: () => void;
-  onBegin: (name: string, language: string, narratorVoice: 'Kore' | 'Fenrir', petMode?: boolean) => void;
+  onBegin: (name: string, language: string, narratorVoice: 'Kore' | 'Fenrir', petMode?: boolean, persona?: 'curator' | 'keeper' | 'pet') => void;
   onTalkToConnie?: () => void;
   onUploadMemories?: () => void;
   onLogout: () => void;
@@ -300,7 +300,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
     setPersona(p);
   };
 
-  const handleGo = () => { if (!can) return; onBegin(name.trim(), language, voice, persona === 'pet'); };
+  const handleGo = () => { if (!can) return; onBegin(name.trim(), language, voice, persona === 'pet', persona || 'curator'); };
 
   const footerBtnStyle = (color = 'rgba(255,255,255,0.1)'): React.CSSProperties => ({
     fontSize: 8, fontWeight: 900, letterSpacing: '.3em', textTransform: 'uppercase',

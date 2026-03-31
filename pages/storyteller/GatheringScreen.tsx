@@ -36,6 +36,7 @@ interface GatheringScreenProps {
     artifacts: NeuralAsset[];
     importedTexts: { name: string; content: string }[];
   };
+  persona?: 'curator' | 'keeper' | 'pet';
   onTalk: () => void;
   onPhotos: (assets: NeuralAsset[]) => void;
   onText: (name: string, content: string) => void;
@@ -142,7 +143,7 @@ const AssetThumb: React.FC<{ asset: NeuralAsset; onRemove: (id: string) => void;
 // ─── Main component ───────────────────────────────────────────────────────────
 
 const GatheringScreen: React.FC<GatheringScreenProps> = ({
-  subject, material, onTalk, onPhotos, onText, onRemoveArtifact, onRemoveText, onCreate, onExit, petMode = false,
+  subject, material, persona = 'curator', onTalk, onPhotos, onText, onRemoveArtifact, onRemoveText, onCreate, onExit, petMode = false,
 }) => {
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -161,24 +162,35 @@ const GatheringScreen: React.FC<GatheringScreenProps> = ({
   const totalMaterials = material.artifacts.length + material.importedTexts.length +
     (material.transcript ? 1 : 0);
   const isProcessing = isUploading || pendingAnalysis > 0;
-  const canCreate = totalMaterials > 0 && !isProcessing;
+  // curator = fire immediately with 1+ item, keeper = encourage more but don't block
+  const minItems = persona === 'curator' ? 1 : 1;
+  const canCreate = totalMaterials >= minItems && !isProcessing;
+  const createLabel = persona === 'curator' ? 'Create the Story' : persona === 'keeper' ? 'Weave the Story' : 'Create the Memorial';
 
-  // ── Connie opening message ────────────────────────────────────────────────
+  // ── Connie opening message — varies by persona ────────────────────────────
   useEffect(() => {
-    const greetings = petMode ? [
-      `Tell me about ${subject} — what were they like? Any memories, photos, or stories you'd like to share.`,
-    ] : [
-      `I'm here to help preserve ${subject}'s story. Add a photo, scan a document, or just tell me about them — anything at all is a wonderful place to start.`,
-      `Every detail matters. Tell me about ${subject}, or add a photo — I'll help weave it into something the family will treasure.`,
-      `Let's make sure ${subject}'s story is never forgotten. Share a photo, a letter, or just a few memories.`,
-    ];
+    const messages = {
+      curator: [
+        `Upload a photo or write a few sentences about ${subject} — Connie will craft a complete cinematic story in under 2 minutes.`,
+        `One photo is all Connie needs to begin ${subject}'s story. Add it here and she'll do the rest.`,
+      ],
+      keeper: [
+        `I'm here to help preserve ${subject}'s story. Add a photo, scan a document, or just tell me about them — anything at all is a wonderful place to start.`,
+        `Every detail matters. Tell me about ${subject}, or add a photo — I'll help weave it into something the family will treasure for generations.`,
+      ],
+      pet: [
+        `Tell me about ${subject} — what were they like? Any memories, photos, or stories you'd like to share.`,
+        `${subject} deserves to be remembered forever. Share a photo or a memory and I'll weave it into something beautiful.`,
+      ],
+    };
+    const pool = messages[petMode ? 'pet' : persona] || messages.keeper;
     setIsConnieTyping(true);
     const t = setTimeout(() => {
-      setConnieMessage(greetings[Math.floor(Math.random() * greetings.length)]);
+      setConnieMessage(pool[Math.floor(Math.random() * pool.length)]);
       setIsConnieTyping(false);
     }, 800);
     return () => clearTimeout(t);
-  }, [subject, petMode]);
+  }, [subject, petMode, persona]);
 
   // ── When materials are added, Connie reacts ───────────────────────────────
   const prevCount = useRef(0);
@@ -426,8 +438,8 @@ const GatheringScreen: React.FC<GatheringScreenProps> = ({
           </div>
         )}
 
-        {/* IntakeAgent readiness indicator */}
-        {totalMaterials > 0 && (
+        {/* IntakeAgent readiness — keeper only, encourages richer material */}
+        {totalMaterials > 0 && persona === 'keeper' && (
           <IntakeAgent
             subject={subject}
             material={material}
@@ -463,7 +475,7 @@ const GatheringScreen: React.FC<GatheringScreenProps> = ({
             {isProcessing ? (
               <><span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>✨</span> Processing…</>
             ) : canCreate ? (
-              <><span>✨</span> Create the Story</>
+              <><span>✨</span> {createLabel}</>
             ) : (
               <>Add a photo or memory to begin</>
             )}
@@ -471,7 +483,8 @@ const GatheringScreen: React.FC<GatheringScreenProps> = ({
           {canCreate && (
             <div style={{ textAlign: 'center', marginTop: 10, fontSize: 12,
               color: 'rgba(255,255,255,0.25)', fontFamily: 'system-ui' }}>
-              {totalMaterials} item{totalMaterials !== 1 ? 's' : ''} ready · Connie will weave it all together
+              {totalMaterials} item{totalMaterials !== 1 ? 's' : ''} ready
+              {persona === 'keeper' && totalMaterials < 3 ? ' · Add more for a richer story' : ' · Connie will weave it all together'}
             </div>
           )}
         </div>
