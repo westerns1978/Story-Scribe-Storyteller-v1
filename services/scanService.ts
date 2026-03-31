@@ -1,53 +1,51 @@
 // services/scanService.ts
 // ============================================
-// Story Scribe Universal Scan Service
+// Story Scribe Universal Scan Service v2
 // ============================================
-// Routes through FlowHub bridge (localhost:8585) which handles:
-//   TWAIN Classic (USB)     → /api/twain/scan
-//   TWAIN Direct (network)  → /api/twain/scan  
-//   eSCL (WiFi/network)     → /escl/{ip}/...
-//   SANE (Linux/USB)        → /api/scan (auto-detected by bridge)
-//
-// Priority order when bridge is present:
-//   1. TWAIN (USB) — highest quality, most reliable for Ambir/Epson USB
-//   2. eSCL (network) — driverless WiFi scanners
-//   3. SANE — Linux fallback
-//
-// If bridge is NOT running, falls back to direct eSCL (same-network only)
+// - Bridge URL auto-detected (localhost first, then last-known LAN IP)
+// - ALL scan paths return PNG (converted at service layer via canvas)
+// - Phone camera capture exported as standalone function
+// - No hardcoded IPs — scanner-agnostic
 // ============================================
 
-// Bridge = Windows PC running flowhub_bridge.py
-// Scanner = Epson DS-790WN on the network
-// These are TWO different IPs — never mix them up
-const BRIDGE_BASE = 'https://192.168.1.169:8585';  // flowhub_bridge.py machine
-const DEFAULT_SCANNER_IP = '192.168.1.145';          // Epson DS-790WN
-const BRIDGE_TIMEOUT_MS = 45000; // 45s — TWAIN scans can be slow
+const BRIDGE_PORT = 8585;
+const BRIDGE_TIMEOUT_MS = 45000;
+const BRIDGE_LOCALSTORAGE_KEY = 'storyscribe_bridge_ip';
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-export type ScanProtocol = 'twain' | 'escl' | 'sane' | 'unknown';
+export type ScanProtocol = 'twain' | 'escl' | 'sane' | 'camera' | 'unknown';
 
 export interface ScannerDevice {
   id: string;
   name: string;
   protocol: ScanProtocol;
-  ip?: string;        // for network scanners
-  twainName?: string; // for TWAIN scanners — exact DS name
+  ip?: string;
+  twainName?: string;
   available: boolean;
 }
 
 export interface BridgeStatus {
   running: boolean;
+  bridgeUrl: string;
   version?: string;
   twainAvailable: boolean;
-  esclScanners: string[];   // IPs of discovered eSCL scanners
-  twainScanners: string[];  // TWAIN DS names
+  esclScanners: ScannerInfo[];
+  twainScanners: string[];
   saneAvailable: boolean;
 }
 
+export interface ScannerInfo {
+  id: string;
+  name: string;
+  ip: string;
+  protocol: string;
+  model?: string;
+}
+
 export interface ScanResult {
-  base64: string;
-  mimeType: string;
+  base64: string;        // always PNG
+  mimeType: 'image/png';
   protocol: ScanProtocol;
   scannerName: string;
   durationMs: number;
@@ -56,13 +54,11 @@ export interface ScanResult {
 export interface ScanOptions {
   resolution?: 150 | 300 | 600;
   colorMode?: 'color' | 'grayscale' | 'blackwhite';
-  format?: 'jpeg' | 'pdf';
-  // TWAIN-specific
-  twainSource?: string;    // DS name, e.g. "EPSON DS-790WN"
-  showTwainUI?: boolean;   // show native TWAIN dialog
+  twainSource?: string;
+  showTwainUI?: boolean;
   duplex?: boolean;
-  // eSCL-specific
   scannerIp?: string;
+  bridgeUrl?: string; // override auto-detect
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -81,6 +77,25 @@ async function fetchWithTimeout(
   }
 }
 
+// Convert any base64 image (JPEG/PDF first-page raster) → PNG base64 via canvas
+async function toPngBase64(base64: string, mimeType: string): Promise<string> {
+  if (mimeType === 'image/png') return base64;
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { reject(new Error('No canvas context')); return; }
+      ctx.drawImage(img, 0, 0);
+      resolve(canvas.toDataURL('image/png').split(',')[1]);
+    };
+    img.onerror = () => reject(new Error('Image decode failed'));
+    img.src = `data:${mimeType};base64,${base64}`;
+  });
+}
+
 async function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -90,143 +105,197 @@ async function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
-// ─── Bridge status check ──────────────────────────────────────────────────────
+// ─── Bridge URL discovery ─────────────────────────────────────────────────────
+// Tries localhost first, then last-known LAN IP from localStorage
 
-export async function getBridgeStatus(): Promise<BridgeStatus> {
+async function probeBridgeUrl(url: string): Promise<boolean> {
   try {
-    const res = await fetchWithTimeout(`${BRIDGE_BASE}/health`, {}, 2000);
-    if (!res.ok) return { running: false, twainAvailable: false, esclScanners: [], twainScanners: [], saneAvailable: false };
+    const res = await fetchWithTimeout(`${url}/health`, {}, 2000);
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
 
-    // Also hit /api/scanners for full scanner list
+export async function discoverBridgeUrl(): Promise<string | null> {
+  // 1. localhost
+  const local = `https://localhost:${BRIDGE_PORT}`;
+  if (await probeBridgeUrl(local)) {
+    localStorage.setItem(BRIDGE_LOCALSTORAGE_KEY, local);
+    return local;
+  }
+
+  // 2. last-known LAN IP
+  const saved = localStorage.getItem(BRIDGE_LOCALSTORAGE_KEY);
+  if (saved && saved !== local) {
+    if (await probeBridgeUrl(saved)) return saved;
+  }
+
+  // 3. Common LAN IP patterns (192.168.1.x, 10.0.0.x)
+  const myIp = await getLocalIpHint();
+  if (myIp) {
+    const candidate = `https://${myIp}:${BRIDGE_PORT}`;
+    if (await probeBridgeUrl(candidate)) {
+      localStorage.setItem(BRIDGE_LOCALSTORAGE_KEY, candidate);
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+async function getLocalIpHint(): Promise<string | null> {
+  try {
+    const pc = new RTCPeerConnection({ iceServers: [] });
+    pc.createDataChannel('');
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    return new Promise(resolve => {
+      pc.onicecandidate = (e) => {
+        if (!e.candidate) { resolve(null); return; }
+        const match = e.candidate.candidate.match(/(\d+\.\d+\.\d+)\.\d+/);
+        if (match) { pc.close(); resolve(match[1] + '.1'); }
+      };
+      setTimeout(() => { pc.close(); resolve(null); }, 2000);
+    });
+  } catch {
+    return null;
+  }
+}
+
+// ─── Bridge status ────────────────────────────────────────────────────────────
+
+export async function getBridgeStatus(bridgeUrl?: string): Promise<BridgeStatus> {
+  const url = bridgeUrl || await discoverBridgeUrl();
+  const notRunning: BridgeStatus = {
+    running: false, bridgeUrl: '', twainAvailable: false,
+    esclScanners: [], twainScanners: [], saneAvailable: false,
+  };
+  if (!url) return notRunning;
+
+  try {
+    const res = await fetchWithTimeout(`${url}/health`, {}, 2000);
+    if (!res.ok) return notRunning;
+
     let scanners: any[] = [];
     try {
-      const scanRes = await fetchWithTimeout(`${BRIDGE_BASE}/api/scanners`, {}, 3000);
+      const scanRes = await fetchWithTimeout(`${url}/api/scanners`, {}, 3000);
       if (scanRes.ok) {
         const data = await scanRes.json();
         scanners = data.scanners || data || [];
       }
     } catch { /* non-critical */ }
 
-    const esclScanners = scanners
+    const esclScanners: ScannerInfo[] = scanners
       .filter((s: any) => (s.protocol || '').toLowerCase().includes('escl'))
-      .map((s: any) => s.ip || s.address || '')
-      .filter(Boolean);
+      .map((s: any) => ({
+        id: s.id || s.ip || '',
+        name: s.name || `Scanner @ ${s.ip}`,
+        ip: s.ip || s.address || '',
+        protocol: 'escl',
+        model: s.model,
+      }))
+      .filter((s: ScannerInfo) => s.ip);
 
     const twainScanners = scanners
       .filter((s: any) => (s.protocol || '').toLowerCase().includes('twain'))
       .map((s: any) => s.name || s.twainName || s.id || '')
       .filter(Boolean);
 
-    // Check TWAIN availability specifically
-    let twainAvailable = twainScanners.length > 0;
+    // Also check dedicated TWAIN endpoint
     try {
-      const twainRes = await fetchWithTimeout(`${BRIDGE_BASE}/api/twain/scanners`, {}, 2000);
-      if (twainRes.ok) {
-        const data = await twainRes.json();
-        const twainList = data.scanners || data.sources || data || [];
-        twainScanners.push(...twainList.map((s: any) => s.name || s).filter(Boolean));
-        twainAvailable = twainScanners.length > 0;
+      const tr = await fetchWithTimeout(`${url}/api/twain/scanners`, {}, 2000);
+      if (tr.ok) {
+        const td = await tr.json();
+        const tl = td.scanners || td.sources || td || [];
+        twainScanners.push(...tl.map((s: any) => s.name || s).filter(Boolean));
       }
-    } catch { /* bridge may not have this endpoint */ }
+    } catch { /* ok */ }
 
     return {
       running: true,
-      twainAvailable,
-      esclScanners: [...new Set(esclScanners)],
+      bridgeUrl: url,
+      twainAvailable: twainScanners.length > 0,
+      esclScanners,
       twainScanners: [...new Set(twainScanners)],
       saneAvailable: scanners.some((s: any) => (s.protocol || '').toLowerCase().includes('sane')),
     };
   } catch {
-    return { running: false, twainAvailable: false, esclScanners: [], twainScanners: [], saneAvailable: false };
+    return notRunning;
   }
 }
 
-// ─── TWAIN scan via FlowHub bridge ───────────────────────────────────────────
+// ─── TWAIN scan ───────────────────────────────────────────────────────────────
 
 async function scanViaTwain(
+  bridgeUrl: string,
   options: ScanOptions,
   onProgress: (msg: string) => void
 ): Promise<ScanResult> {
-  onProgress('Connecting to TWAIN scanner…');
-
-  const colorModeMap = {
-    color: 'RGB',
-    grayscale: 'Gray',
-    blackwhite: 'BlackWhite',
-  };
-
+  onProgress('Connecting to scanner…');
+  const colorModeMap = { color: 'RGB', grayscale: 'Gray', blackwhite: 'BlackWhite' };
   const payload: any = {
     resolution: options.resolution ?? 300,
     color_mode: colorModeMap[options.colorMode ?? 'color'],
-    format: options.format ?? 'jpeg',
+    format: 'jpeg', // bridge returns jpeg, we convert to PNG
     show_ui: options.showTwainUI ?? false,
     duplex: options.duplex ?? false,
   };
   if (options.twainSource) payload.source = options.twainSource;
 
-  onProgress('Starting TWAIN scan…');
+  onProgress('Scanning…');
   const start = Date.now();
 
   const res = await fetchWithTimeout(
-    `${BRIDGE_BASE}/api/twain/scan`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    },
+    `${bridgeUrl}/api/twain/scan`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) },
     BRIDGE_TIMEOUT_MS
   );
-
   if (!res.ok) {
     const err = await res.text();
     throw new Error(`TWAIN scan failed (${res.status}): ${err.slice(0, 200)}`);
   }
 
   const data = await res.json();
+  let rawBase64 = data.image_base64 || data.base64 || data.data || '';
+  const rawMime = data.mime_type || data.mimeType || 'image/jpeg';
 
-  // Bridge returns base64 directly or as a blob URL
-  let base64 = data.image_base64 || data.base64 || data.data || '';
-  const mimeType = data.mime_type || data.mimeType || 'image/jpeg';
-
-  if (!base64 && data.image_url) {
-    // Bridge returned a URL — fetch and convert
-    onProgress('Retrieving scanned image…');
+  if (!rawBase64 && data.image_url) {
+    onProgress('Retrieving image…');
     const imgRes = await fetchWithTimeout(data.image_url, {}, 15000);
-    if (!imgRes.ok) throw new Error('Could not retrieve scanned image from bridge');
-    const blob = await imgRes.blob();
-    base64 = await blobToBase64(blob);
+    if (!imgRes.ok) throw new Error('Could not retrieve scanned image');
+    rawBase64 = await blobToBase64(await imgRes.blob());
   }
+  if (!rawBase64) throw new Error('TWAIN scan returned no image data');
 
-  if (!base64) throw new Error('TWAIN scan completed but no image data returned');
+  onProgress('Converting to PNG…');
+  const base64 = await toPngBase64(rawBase64, rawMime);
 
   return {
-    base64,
-    mimeType,
-    protocol: 'twain',
+    base64, mimeType: 'image/png', protocol: 'twain',
     scannerName: options.twainSource || data.scanner_name || 'TWAIN Scanner',
     durationMs: Date.now() - start,
   };
 }
 
-// ─── eSCL scan via FlowHub bridge ─────────────────────────────────────────────
+// ─── eSCL scan ────────────────────────────────────────────────────────────────
 
 async function scanViaEscl(
+  bridgeUrl: string,
   ip: string,
   options: ScanOptions,
   onProgress: (msg: string) => void
 ): Promise<ScanResult> {
-  // POST to /api/scan on the bridge — bridge handles eSCL with correct XML
   onProgress('Connecting to scanner…');
   const start = Date.now();
-  const scannerIp = ip || DEFAULT_SCANNER_IP;
 
   const res = await fetchWithTimeout(
-    `${BRIDGE_BASE}/api/scan`,
+    `${bridgeUrl}/api/scan`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        scanner_ip: scannerIp,
+        scanner_ip: ip,
         resolution: options.resolution ?? 300,
         color_mode: options.colorMode ?? 'color',
         format: 'jpeg',
@@ -234,196 +303,150 @@ async function scanViaEscl(
     },
     BRIDGE_TIMEOUT_MS
   );
-
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`Scan failed (${res.status}): ${err.slice(0, 200)}`);
+    throw new Error(`eSCL scan failed (${res.status}): ${err.slice(0, 200)}`);
   }
 
   const data = await res.json();
-  const base64 = data.image_base64 || data.base64 || '';
-  if (!base64) throw new Error('No image data returned');
+  const rawBase64 = data.image_base64 || data.base64 || '';
+  if (!rawBase64) throw new Error('No image data returned from scanner');
 
-  return {
-    base64,
-    mimeType: data.mime_type || 'image/jpeg',
-    protocol: 'escl',
-    scannerName: `Epson DS-790WN @ ${scannerIp}`,
-    durationMs: Date.now() - start,
-  };
+  onProgress('Converting to PNG…');
+  const base64 = await toPngBase64(rawBase64, data.mime_type || 'image/jpeg');
+  const scannerName = data.scanner_name || `Scanner @ ${ip}`;
+
+  return { base64, mimeType: 'image/png', protocol: 'escl', scannerName, durationMs: Date.now() - start };
 }
 
-// ─── Generic bridge scan (auto-protocol) ─────────────────────────────────────
-// Uses /api/scan which lets the bridge decide protocol
+// ─── Generic bridge scan ──────────────────────────────────────────────────────
 
 async function scanViaBridge(
+  bridgeUrl: string,
   options: ScanOptions,
   onProgress: (msg: string) => void
 ): Promise<ScanResult> {
-  onProgress('Starting scan…');
+  onProgress('Scanning…');
   const start = Date.now();
-
-  const payload: any = {
-    resolution: options.resolution ?? 150,
-    color_mode: options.colorMode ?? 'color',
-    format: options.format ?? 'pdf',
-  };
+  const payload: any = { resolution: options.resolution ?? 300, color_mode: options.colorMode ?? 'color', format: 'jpeg' };
   if (options.scannerIp) payload.scanner_ip = options.scannerIp;
   if (options.twainSource) payload.twain_source = options.twainSource;
 
   const res = await fetchWithTimeout(
-    `${BRIDGE_BASE}/api/scan`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    },
+    `${bridgeUrl}/api/scan`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) },
     BRIDGE_TIMEOUT_MS
   );
-
   if (!res.ok) {
     const err = await res.text();
     throw new Error(`Bridge scan failed (${res.status}): ${err.slice(0, 200)}`);
   }
 
   const contentType = res.headers.get('content-type') || '';
-  let base64: string;
-  let mimeType = 'image/jpeg';
+  let rawBase64 = '', rawMime = 'image/jpeg';
 
   if (contentType.includes('application/json')) {
     const data = await res.json();
-    base64 = data.image_base64 || data.base64 || data.data || '';
-    mimeType = data.mime_type || 'image/jpeg';
-    if (!base64 && data.image_url) {
+    rawBase64 = data.image_base64 || data.base64 || data.data || '';
+    rawMime = data.mime_type || 'image/jpeg';
+    if (!rawBase64 && data.image_url) {
       const imgRes = await fetchWithTimeout(data.image_url, {}, 15000);
       const blob = await imgRes.blob();
-      base64 = await blobToBase64(blob);
-      mimeType = blob.type || 'image/jpeg';
+      rawBase64 = await blobToBase64(blob);
+      rawMime = blob.type || 'image/jpeg';
     }
   } else {
-    // Binary response
     const blob = await res.blob();
-    base64 = await blobToBase64(blob);
-    mimeType = blob.type || 'image/jpeg';
+    rawBase64 = await blobToBase64(blob);
+    rawMime = blob.type || 'image/jpeg';
   }
 
-  if (!base64) throw new Error('Scan completed but no image data returned');
+  if (!rawBase64) throw new Error('Scan returned no image data');
 
-  return {
-    base64,
-    mimeType,
-    protocol: 'unknown',
-    scannerName: 'Scanner',
-    durationMs: Date.now() - start,
-  };
+  onProgress('Converting to PNG…');
+  const base64 = await toPngBase64(rawBase64, rawMime);
+  return { base64, mimeType: 'image/png', protocol: 'unknown', scannerName: 'Scanner', durationMs: Date.now() - start };
+}
+
+// ─── Phone camera capture ─────────────────────────────────────────────────────
+// Standalone — no bridge needed. Returns PNG base64.
+
+export async function captureFromCamera(
+  videoElement: HTMLVideoElement
+): Promise<ScanResult> {
+  const start = Date.now();
+  const canvas = document.createElement('canvas');
+  canvas.width = videoElement.videoWidth;
+  canvas.height = videoElement.videoHeight;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvas not available');
+  ctx.drawImage(videoElement, 0, 0);
+  const base64 = canvas.toDataURL('image/png').split(',')[1];
+  return { base64, mimeType: 'image/png', protocol: 'camera', scannerName: 'Camera', durationMs: Date.now() - start };
 }
 
 // ─── MAIN EXPORT: Universal scan ─────────────────────────────────────────────
-// Auto-detects best available protocol and routes accordingly.
-// Priority: TWAIN > eSCL > SANE > error
 
 export async function scan(
   options: ScanOptions = {},
   onProgress: (msg: string) => void = () => {}
 ): Promise<ScanResult> {
+  onProgress('Looking for scanner…');
 
-  onProgress('Checking scanner bridge…');
-  const bridge = await getBridgeStatus();
+  const bridge = await getBridgeStatus(options.bridgeUrl);
 
   if (!bridge.running) {
-    // If bridge not running but we have an IP, try direct eSCL
-    if (options.scannerIp) {
-      onProgress('Bridge offline — trying direct network scan…');
-      return scanViaEscl(options.scannerIp, options, onProgress);
-    }
     throw new Error(
-      'FlowHub bridge is not running. Start flowhub_bridge.py on this machine to enable scanning.'
+      'Scanner bridge not found. Start flowhub_bridge.py on your computer to enable scanning, or use the camera option.'
     );
   }
 
-  // Bridge is running — pick best protocol
+  const url = bridge.bridgeUrl;
 
-  // 1. TWAIN requested explicitly or TWAIN available + no IP specified
+  // TWAIN explicit or USB-preferred
   if (options.twainSource || (bridge.twainAvailable && !options.scannerIp)) {
     try {
-      return await scanViaTwain(options, onProgress);
+      return await scanViaTwain(url, options, onProgress);
     } catch (e: any) {
-      console.warn('[ScanService] TWAIN failed, falling back:', e.message);
-      onProgress('TWAIN unavailable — trying network scan…');
-      // Fall through to eSCL
+      console.warn('[ScanService] TWAIN failed, falling back to eSCL:', e.message);
+      onProgress('Trying network scanner…');
     }
   }
 
-  // 2. eSCL — network scanner
-  const targetIp = options.scannerIp || bridge.esclScanners[0];
-  if (targetIp) {
-    return scanViaEscl(targetIp, options, onProgress);
-  }
+  // eSCL network
+  const targetIp = options.scannerIp || bridge.esclScanners[0]?.ip;
+  if (targetIp) return scanViaEscl(url, targetIp, options, onProgress);
 
-  // 3. Generic bridge scan — let the bridge figure it out
-  if (bridge.running) {
-    return scanViaBridge(options, onProgress);
-  }
-
-  throw new Error('No scanner found. Connect a USB scanner or ensure your network scanner is on.');
+  // Generic fallback
+  return scanViaBridge(url, options, onProgress);
 }
 
-// ─── Scanner picker — returns what's available for UI display ────────────────
+// ─── Available scanners for UI ────────────────────────────────────────────────
 
 export async function getAvailableScanners(): Promise<ScannerDevice[]> {
   const bridge = await getBridgeStatus();
   const devices: ScannerDevice[] = [];
 
   if (!bridge.running) {
-    return [{
-      id: 'no_bridge',
-      name: 'FlowHub bridge not running',
-      protocol: 'unknown',
-      available: false,
-    }];
+    return [{ id: 'no_bridge', name: 'Scanner bridge not running', protocol: 'unknown', available: false }];
   }
 
-  // TWAIN scanners (USB + network TWAIN)
   bridge.twainScanners.forEach((name, i) => {
-    devices.push({
-      id: `twain_${i}`,
-      name,
-      protocol: 'twain',
-      twainName: name,
-      available: true,
-    });
+    devices.push({ id: `twain_${i}`, name, protocol: 'twain', twainName: name, available: true });
   });
 
-  // eSCL network scanners
-  bridge.esclScanners.forEach((ip, i) => {
-    devices.push({
-      id: `escl_${i}`,
-      name: `Network Scanner @ ${ip}`,
-      protocol: 'escl',
-      ip,
-      available: true,
-    });
+  bridge.esclScanners.forEach((s) => {
+    devices.push({ id: `escl_${s.ip}`, name: s.name, protocol: 'escl', ip: s.ip, available: true });
   });
 
-  // SANE
   if (bridge.saneAvailable) {
-    devices.push({
-      id: 'sane_default',
-      name: 'USB Scanner (SANE)',
-      protocol: 'sane',
-      available: true,
-    });
+    devices.push({ id: 'sane_default', name: 'USB Scanner (SANE)', protocol: 'sane', available: true });
   }
 
-  return devices.length > 0 ? devices : [{
-    id: 'no_scanner',
-    name: 'No scanners found',
-    protocol: 'unknown',
-    available: false,
-  }];
+  return devices.length > 0 ? devices : [{ id: 'no_scanner', name: 'No scanners found', protocol: 'unknown', available: false }];
 }
 
-// ─── Saved scanner preferences ───────────────────────────────────────────────
+// ─── Preferences ─────────────────────────────────────────────────────────────
 
 const PREFS_KEY = 'storyscribe_scan_prefs';
 
@@ -436,14 +459,10 @@ export interface ScanPrefs {
 }
 
 export function getScanPrefs(): ScanPrefs {
-  try {
-    return JSON.parse(localStorage.getItem(PREFS_KEY) || '{}');
-  } catch {
-    return { resolution: 300, colorMode: 'color' };
-  }
+  try { return JSON.parse(localStorage.getItem(PREFS_KEY) || '{}'); }
+  catch { return { resolution: 300, colorMode: 'color' }; }
 }
 
 export function saveScanPrefs(prefs: Partial<ScanPrefs>): void {
-  const current = getScanPrefs();
-  localStorage.setItem(PREFS_KEY, JSON.stringify({ ...current, ...prefs }));
+  localStorage.setItem(PREFS_KEY, JSON.stringify({ ...getScanPrefs(), ...prefs }));
 }

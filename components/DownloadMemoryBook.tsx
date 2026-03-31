@@ -36,15 +36,39 @@ function hexToRgb(hex: string) {
   return { r: parseInt(hex.slice(1,3),16), g: parseInt(hex.slice(3,5),16), b: parseInt(hex.slice(5,7),16) };
 }
 
+// Fetch image as blob → object URL to avoid CORS canvas taint.
+// Supabase Storage may not echo back Access-Control-Allow-Origin,
+// which silently taints the canvas and causes toDataURL() to return blank.
 async function loadImageEl(url: string): Promise<HTMLImageElement | null> {
   if (!url) return null;
+  let src = url;
+  let objectUrl: string | null = null;
+  try {
+    // Try fetch-as-blob first (bypasses CORS taint)
+    const res = await Promise.race([
+      fetch(url, { mode: 'cors', cache: 'force-cache' }),
+      new Promise<null>(r => setTimeout(() => r(null), 10000)),
+    ]);
+    if (res && (res as Response).ok) {
+      const blob = await (res as Response).blob();
+      objectUrl = URL.createObjectURL(blob);
+      src = objectUrl;
+    }
+  } catch { /* fall through to direct load */ }
+
   return new Promise(resolve => {
     const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => resolve(img);
-    img.onerror = () => resolve(null);
-    img.src = url;
-    setTimeout(() => resolve(null), 8000);
+    if (!objectUrl) img.crossOrigin = 'anonymous';
+    img.onload = () => { resolve(img); };
+    img.onerror = () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      resolve(null);
+    };
+    img.src = src;
+    setTimeout(() => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      resolve(null);
+    }, 12000);
   });
 }
 
@@ -587,8 +611,13 @@ export function DownloadMemoryBook({ story, style }: Props) {
       // 3. Scene pages
       const beats = story?.storyboard?.story_beats || [];
       const imgs = story?.generatedImages || [];
+      // Build imgMap supporting all index field names the cascade may return:
+      // img.index, img.beat_index, img.beat_number, img.scene_index, or array position
       const imgMap: Record<number, any> = {};
-      imgs.forEach((img: any, i: number) => { imgMap[img.index ?? i] = img; });
+      imgs.forEach((img: any, i: number) => {
+        const idx = img.index ?? img.beat_index ?? img.beat_number ?? img.scene_index ?? i;
+        imgMap[idx] = img;
+      });
 
       for (let i = 0; i < beats.length; i++) {
         setProgress(`Scene ${i + 1} of ${beats.length}...`);

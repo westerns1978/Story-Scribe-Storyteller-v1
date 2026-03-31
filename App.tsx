@@ -12,7 +12,7 @@ import Loader2Icon from './components/icons/Loader2Icon';
 
 // Storyteller Flow Screens
 import { WelcomeScreen } from './pages/storyteller/WelcomeScreen';
-import { GatheringScreen } from './pages/storyteller/GatheringScreen';
+import GatheringScreen from './pages/storyteller/GatheringScreen';
 import { ConnieFullScreen } from './pages/storyteller/ConnieFullScreen';
 import { YourStoryScreen } from './pages/storyteller/YourStoryScreen';
 import ProgressOverlay from './components/ProgressOverlay';
@@ -68,12 +68,21 @@ const App: React.FC = () => {
       const params = new URLSearchParams(window.location.search);
       const storyId = params.get('story');
       if (storyId) {
+        // ── SHARE LINK PATCH ──────────────────────────────────────────────────
+        // Clean the URL immediately so refresh doesn't re-trigger
+        window.history.replaceState({}, '', window.location.pathname);
         setIsLoadingShared(true);
         try {
           const story = await loadStoryFromVault(storyId);
-          if (story) setSharedStory(story);
+          if (story) {
+            // Story found — show it directly, no auth needed
+            setSharedStory(story);
+          } else {
+            // Story not found — land on welcome with a soft message
+            console.warn('[Share] Story not found:', storyId);
+          }
         } catch (e) {
-          console.error("Shared link resolution failed", e);
+          console.error('[Share] Resolution failed', e);
         } finally {
           setIsLoadingShared(false);
         }
@@ -132,7 +141,7 @@ const App: React.FC = () => {
         setPhase('story');
       }
     } catch (e) {
-      console.error("Failed to load story:", e);
+      console.error('Failed to load story:', e);
     }
   }, []);
 
@@ -161,7 +170,14 @@ const App: React.FC = () => {
     setMaterial(prev => ({ ...prev, importedTexts: prev.importedTexts.filter((_, i) => i !== index) }));
   }, []);
 
-  const handleCreateStory = useCallback(async (photoAnalysis?: { era?: string; description?: string; subject_description?: string; suggested_style?: string } | null, narrativeStyle?: string, musicQuery?: string, imagePalette?: string, isPet?: boolean, verifiedPhotoFacts?: string[]) => {
+  const handleCreateStory = useCallback(async (
+    photoAnalysis?: { era?: string; description?: string; subject_description?: string; suggested_style?: string } | null,
+    narrativeStyle?: string,
+    musicQuery?: string,
+    imagePalette?: string,
+    isPet?: boolean,
+    verifiedPhotoFacts?: string[]
+  ) => {
     setPhase('creating');
     setProgressStage(0);
     try {
@@ -171,7 +187,7 @@ const App: React.FC = () => {
       ].filter(Boolean).join('\n\n---\n\n');
 
       if (!allText.trim()) {
-        alert("Please add at least one memory — talk to your companion, upload photos, or add a document.");
+        alert('Please add at least one memory — talk to your companion, upload photos, or add a document.');
         setPhase('gathering');
         return;
       }
@@ -183,16 +199,12 @@ const App: React.FC = () => {
         extractedText: '',
       }));
 
-      // Build photo grounding context — passed to edge function to anchor AI images
-      // to the real person's era, ethnicity, and appearance
       const photoGrounding = photoAnalysis ? {
         era: photoAnalysis.era,
         subject_description: photoAnalysis.subject_description || photoAnalysis.description,
         suggested_style: photoAnalysis.suggested_style,
       } : undefined;
 
-      // Real uploaded photos — passed to cascade so Gemini can match each
-      // to its nearest story beat by era, producing anchor_photo per beat
       const uploadedPhotos = material.artifacts
         .filter(a => a.public_url && a.file_type?.startsWith('image/'))
         .map(a => ({
@@ -202,14 +214,14 @@ const App: React.FC = () => {
         }));
 
       const response = await generateStoryWithMagic(
-        allText, storyName, narrativeStyle || "Cinematic (Non-Linear)",
+        allText, storyName, narrativeStyle || 'Cinematic (Non-Linear)',
         (step) => {
           if (step === 'agent_scribe') setProgressStage(0);
           if (step === 'agent_cartographer') setProgressStage(1);
           if (step === 'agent_illustrator') setProgressStage(2);
           if (step === 'agent_director') setProgressStage(3);
         },
-        artifactData, narrativeStyle || "Cinematic (Non-Linear)", photoGrounding,
+        artifactData, narrativeStyle || 'Cinematic (Non-Linear)', photoGrounding,
         musicQuery, imagePalette, language, isPet || petMode,
         verifiedPhotoFacts, uploadedPhotos
       );
@@ -224,20 +236,17 @@ const App: React.FC = () => {
         storyboard: response.storyboard,
         musicQuery: response.suggested_music_query || musicQuery || undefined,
         imagePalette: imagePalette || undefined,
-        // Merge user's uploaded photos (material.artifacts) with AI-extracted artifacts
-        // User photos have public_url + file_type set — these power the Band of Brothers anchor
         artifacts: [
           ...material.artifacts.filter(a => a.public_url && a.file_type?.startsWith('image/')),
           ...(response.artifacts || response.extraction?.artifacts || []),
         ],
         beatAudio: response.beat_audio || [],
         petMode: isPet || false,
-        uploadedPhotos, // real photos with era — for per-beat anchor grounding
+        uploadedPhotos,
       };
 
       try {
         await saveStory({ ...newStory, id: newStory.sessionId, name: storyName, savedAt: new Date().toISOString() } as StoryArchiveItem);
-        // Wait 2s for edge function to finish committing to Supabase before refreshing shelf
         const archived = await getArchivedStories(2000);
         setFullSavedStories(archived);
         setSavedStories(archived.map(s => ({
@@ -246,38 +255,31 @@ const App: React.FC = () => {
           savedAt: s.savedAt || new Date().toISOString(),
         })));
       } catch (saveErr) {
-        console.warn("[Archive] Auto-save skipped:", saveErr);
+        console.warn('[Archive] Auto-save skipped:', saveErr);
       }
 
       setActiveStory(newStory);
       if (response.extraction?.storyteller?.name) setSubject(response.extraction.storyteller.name);
       setTimeout(() => setPhase('story'), 1500);
     } catch (error: any) {
-      console.error("The Magic Cascade failed:", error);
+      console.error('The Magic Cascade failed:', error);
       alert(`Story creation encountered an issue: ${error.message}\n\nPlease try again.`);
       setPhase('gathering');
     }
-  }, [material, subject]);
-
+  }, [material, subject, petMode, language]);
 
   const handleRefineNarrative = useCallback(async (instruction: string) => {
     if (!activeStory) return;
     try {
       const refinedText = [
         activeStory.narrative,
-        ...( activeStory.extraction ? [`[Context: ${JSON.stringify(activeStory.extraction.storyteller || {})}]`] : [])
+        ...(activeStory.extraction ? [`[Context: ${JSON.stringify(activeStory.extraction.storyteller || {})}]`] : [])
       ].join('\n\n');
 
       const response = await generateStoryWithMagic(
-        refinedText,
-        activeStory.storytellerName,
-        instruction,
-        () => {},
-        [],
-        instruction,
-        undefined,
-        activeStory.musicQuery,
-        activeStory.imagePalette
+        refinedText, activeStory.storytellerName, instruction,
+        () => {}, [], instruction, undefined,
+        activeStory.musicQuery, activeStory.imagePalette
       );
 
       setActiveStory(prev => prev ? {
@@ -315,6 +317,29 @@ const App: React.FC = () => {
     }
   }, []);
 
+  // ── Share handler — used by YourStoryScreen ────────────────────────────────
+  // navigator.share() on mobile, clipboard copy on desktop, prompt as last resort
+  const handleShareStory = useCallback(async (story: ActiveStory) => {
+    const STORY_BASE = 'https://gemynd-story-scribe-608887102507.us-west1.run.app';
+    const shareUrl = story.share_url || `${STORY_BASE}?story=${story.sessionId}`;
+    const shareTitle = `${story.storytellerName}'s Story`;
+    const shareText = `Connie preserved this story — ${shareTitle}`;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: shareTitle, text: shareText, url: shareUrl });
+        return;
+      } catch { /* user cancelled or not supported */ }
+    }
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      // Return the URL so the caller can show a "Copied!" confirmation
+      return shareUrl;
+    } catch {
+      window.prompt('Copy this link to share:', shareUrl);
+    }
+  }, []);
+
   const runAdminCascade = async (data: {
     transcript: string; storytellerName: string;
     artifacts?: { data: string; mimeType: string; description: string }[];
@@ -325,12 +350,12 @@ const App: React.FC = () => {
     try {
       const mappedArtifacts = (data.artifacts || []).map(a => ({ data: a.data, mimeType: a.mimeType, type: 'image' }));
       const response = await generateStoryWithMagic(
-        data.transcript, data.storytellerName, "Eloquent (Biographical)",
+        data.transcript, data.storytellerName, 'Eloquent (Biographical)',
         (step) => {
           if (step === 'agent_cartographer') setProgressStage(1);
           if (step === 'agent_illustrator') setProgressStage(2);
           if (step === 'agent_director') setProgressStage(3);
-        }, mappedArtifacts, "Cinematic (Non-Linear)"
+        }, mappedArtifacts, 'Cinematic (Non-Linear)'
       );
       const newStory: ActiveStory = {
         sessionId: response.session_id, storytellerName: data.storytellerName,
@@ -342,16 +367,16 @@ const App: React.FC = () => {
       setActiveStory(newStory);
       setTimeout(() => setPhase('story'), 1500);
     } catch (error) {
-      console.error("Admin cascade failed:", error);
+      console.error('Admin cascade failed:', error);
       setPhase('admin');
-      alert("Story creation encountered an issue.");
+      alert('Story creation encountered an issue.');
     }
   };
 
   if (isLoadingShared) return <LoadingScreen message="Uplinking Shared Legacy..." />;
   if (!isInitialized) return null;
 
-  // Share link — show story publicly, no auth required
+  // ── Share link — show story publicly, no auth required ────────────────────
   if (sharedStory) {
     return (
       <ErrorBoundary>
@@ -362,6 +387,7 @@ const App: React.FC = () => {
           onViewShelf={undefined}
           onReorderBeats={undefined}
           isSharedView={true}
+          onShare={() => handleShareStory(sharedStory)}
         />
       </ErrorBoundary>
     );
@@ -386,7 +412,10 @@ const App: React.FC = () => {
                 onViewShelf={() => setPhase('shelf')}
                 savedStories={savedStories}
                 storiesLoading={storiesLoading}
-                onLogoTap={() => { let t = (window as any).__adminTap = ((window as any).__adminTap || 0) + 1; if (t >= 5) { (window as any).__adminTap = 0; setPhase('admin'); } }}
+                onLogoTap={() => {
+                  let t = (window as any).__adminTap = ((window as any).__adminTap || 0) + 1;
+                  if (t >= 5) { (window as any).__adminTap = 0; setPhase('admin'); }
+                }}
                 activeStoryName={activeStory?.storytellerName}
                 onReturnToStory={activeStory ? () => setPhase('story') : undefined}
               />
@@ -440,6 +469,7 @@ const App: React.FC = () => {
                 onViewShelf={() => setPhase('shelf')}
                 onBack={() => setPhase('welcome')}
                 onRefineNarrative={handleRefineNarrative}
+                onShare={() => handleShareStory(activeStory)}
               />
             </motion.div>
           )}
@@ -464,7 +494,8 @@ const App: React.FC = () => {
                 initialStagedArtifacts={[]} activeStory={activeStory} onStoryChange={setActiveStory}
               />
               <ConnieChatWidget
-                isOpen={adminConnieOpen} onToggle={() => setAdminConnieOpen(!adminConnieOpen)}
+                isOpen={adminConnieOpen}
+                onToggle={() => setAdminConnieOpen(!adminConnieOpen)}
                 onConversationEnd={runAdminCascade}
                 onExecuteCommand={(cmd, args) => {
                   if (cmd === 'navigateTo' && args.view) {
