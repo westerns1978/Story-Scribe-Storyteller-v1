@@ -60,16 +60,20 @@ export const YourStoryScreen: React.FC<YourStoryScreenProps> = ({
 
   // ── Narrative editing state ───────────────────────────────────────────────
   const [isEditingNarrative, setIsEditingNarrative] = useState(false);
-  // Sanitize narrative — strip JSON wrapper if double-encoding occurred
-  const sanitizeNarrative = (raw: string): string => {
-    if (!raw) return '';
+  // Sanitize narrative — recursively strip JSON wrapper if double/triple encoding occurred
+  const sanitizeNarrative = (raw: string, depth = 0): string => {
+    if (!raw || depth > 5) return raw || '';
     const trimmed = raw.trim();
-    // If it starts with { it's double-encoded — try to extract narrative field
     if (trimmed.startsWith('{')) {
       try {
         const parsed = JSON.parse(trimmed);
+        // If parsed object has a narrative field, recurse into it
         if (parsed.narrative && typeof parsed.narrative === 'string') {
-          return parsed.narrative;
+          return sanitizeNarrative(parsed.narrative, depth + 1);
+        }
+        // If the whole thing is the story object, stringify just the narrative
+        if (typeof parsed === 'object' && !parsed.narrative) {
+          return trimmed; // can't extract, return as-is
         }
       } catch { /* not JSON, use as-is */ }
     }
@@ -77,6 +81,13 @@ export const YourStoryScreen: React.FC<YourStoryScreenProps> = ({
   };
   const [editedNarrative, setEditedNarrative] = useState(sanitizeNarrative(story.narrative || ''));
   const [narrativeSaved, setNarrativeSaved] = useState(false);
+
+  // Sync narrative if story prop updates after mount (share link cold load)
+  useEffect(() => {
+    if (story.narrative) {
+      setEditedNarrative(sanitizeNarrative(story.narrative));
+    }
+  }, [story.narrative]);
 
   const showToast = useCallback((message: string, type: 'success' | 'error' | 'warn') => {
     setToasts(prev => [...prev, { id: Date.now(), message, type }]);
@@ -97,8 +108,9 @@ export const YourStoryScreen: React.FC<YourStoryScreenProps> = ({
   // These are the user's actual photos — shown FIRST before any AI imagery
   const realAssets = useMemo(() => {
     return (story.artifacts || []).filter(a =>
-      a.file_type?.startsWith('image/') && a.public_url
-    ).slice(0, 3); // first 3 real photos max for the anchor sequence
+      a.file_type?.startsWith('image/') && a.public_url &&
+      !a.id?.startsWith('restored-') // exclude AI-restored copies — show only originals
+    ).slice(0, 3);
   }, [story.artifacts]);
 
   const handleShareWithFamily = async () => {
