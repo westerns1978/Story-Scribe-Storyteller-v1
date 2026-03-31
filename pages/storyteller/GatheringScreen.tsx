@@ -250,14 +250,19 @@ const GatheringScreen: React.FC<GatheringScreenProps> = ({
           const asset = await storageService.uploadFile(file, { title: file.name, tags: ['gathering'] });
           newAssets.push(asset);
           setRestoringIds(prev => new Set(prev).add(asset.id));
-          // async restore
+          // async restore — fully isolated, never crashes the upload flow
           (async () => {
             try {
               const b64 = await fileToBase64(file);
               const enhanced = await enhancePhoto(b64, 'restore', () => {});
-              onPhotos([{ ...asset, id: `restored-${asset.id}`, public_url: enhanced.imageData, metadata: { ...asset.metadata, restored: true } }]);
-            } catch { /* restore optional */ }
-            finally { setRestoringIds(prev => { const n = new Set(prev); n.delete(asset.id); return n; }); }
+              if (enhanced && enhanced.imageData) {
+                onPhotos([{ ...asset, id: `restored-${asset.id}`, public_url: enhanced.imageData, metadata: { ...asset.metadata, restored: true } }]);
+              }
+            } catch (e) {
+              console.warn('[GatheringScreen] Photo restore skipped:', e);
+            } finally {
+              setRestoringIds(prev => { const n = new Set(prev); n.delete(asset.id); return n; });
+            }
           })();
           // async analysis
           setPendingAnalysis(n => n + 1);
