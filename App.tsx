@@ -5,6 +5,7 @@ import { Customer, ActiveStory, StoryArchiveItem, NeuralAsset } from './types';
 import { generateStoryWithMagic } from './services/api';
 import { LandingGate } from './components/LandingGate';
 import { CinematicSplash } from './components/CinematicSplash'; // kept for reference, unused
+import StoryLoadingCinema from './components/StoryLoadingCinema';
 import { usePersistentSession } from './hooks/usePersistentSession';
 import { checkElderlyMode, enableElderlyMode } from './utils/accessibility';
 import { saveStory, getArchivedStories, loadStory as loadStoryFromVault } from './services/archiveService';
@@ -375,7 +376,14 @@ const App: React.FC = () => {
     }
   };
 
-  if (isLoadingShared) return <LoadingScreen message="Uplinking Shared Legacy..." />;
+  // Extract name from URL for personalised loading screen
+  const pendingName = (() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('name') || undefined;
+    } catch { return undefined; }
+  })();
+  if (isLoadingShared) return <StoryLoadingCinema storytellerName={pendingName} />;
   if (!isInitialized) return null;
 
   // ── Share link — show story publicly, no auth required ────────────────────
