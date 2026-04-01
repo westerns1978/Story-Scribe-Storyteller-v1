@@ -41,7 +41,7 @@ export const YourStoryScreen: React.FC<YourStoryScreenProps> = ({
   story, onRestart, narratorVoice = 'Kore', onViewShelf, onBack,
   onReorderBeats, isSharedView = false, onRefineNarrative,
 }) => {
-  const [viewMode, setViewMode] = useState<'cinematic' | 'details'>(isSharedView ? 'details' : 'cinematic');
+  const [viewMode, setViewMode] = useState<'cinematic' | 'details'>('cinematic');
   const [activeTab, setActiveTab] = useState<DetailTab>('overview');
   const [isViewerOpen, setIsViewerOpen] = useState(false);
   const [toasts, setToasts] = useState<any[]>([]);
@@ -205,9 +205,11 @@ export const YourStoryScreen: React.FC<YourStoryScreenProps> = ({
   };
 
   // ── Cinematic Mode ────────────────────────────────────────────────────────
+  // For shared views, only show cinematic if user explicitly clicked Re-watch
+  // This prevents the black flash on initial load
   if (viewMode === 'cinematic') {
     return (
-      <div className="h-full w-full relative">
+      <div className="h-full w-full relative" style={{ background: isSharedView ? '#f5f0e8' : '#000000' }}>
         <CinematicReveal
           story={storyWithEdits as any}
           onRestart={onRestart}
