@@ -98,6 +98,7 @@ const CinematicReveal: React.FC<CinematicRevealProps> = ({
   const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const controlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeAudioCtxRef = useRef<AudioContext | null>(null);
+  const isStartingRef = useRef(false);
   const sceneStartTimeRef = useRef<number>(0);
   const musicUrlRef = useRef<string>('');
   const narrationCache = useRef<Record<number, { audioBuffer: AudioBuffer; audioContext: AudioContext }>>({});
