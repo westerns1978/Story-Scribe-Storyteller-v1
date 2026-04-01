@@ -34,12 +34,13 @@ interface YourStoryScreenProps {
   onBack?: () => void;
   onReorderBeats?: (oldIndex: number, newIndex: number) => void;
   isSharedView?: boolean;
+  autoPlayCinematic?: boolean;
   onRefineNarrative?: (instruction: string) => Promise<void>;
 }
 
 export const YourStoryScreen: React.FC<YourStoryScreenProps> = ({
   story, onRestart, narratorVoice = 'Kore', onViewShelf, onBack,
-  onReorderBeats, isSharedView = false, onRefineNarrative,
+  onReorderBeats, isSharedView = false, autoPlayCinematic = false, onRefineNarrative,
 }) => {
   const [viewMode, setViewMode] = useState<'cinematic' | 'details'>('details');
   const [activeTab, setActiveTab] = useState<DetailTab>('overview');
