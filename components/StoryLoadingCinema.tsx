@@ -89,8 +89,8 @@ const IMAGES = [
   'https://images.unsplash.com/photo-1504701954957-2010ec3bcec1?w=1200&q=75', // golden hour
 ];
 
-const QUOTE_DURATION = 5500; // ms per quote
-const IMAGE_DURATION = 8000; // ms per image
+const QUOTE_DURATION = 4000; // ms per quote
+const IMAGE_DURATION = 6000; // ms per image
 
 interface Props {
   storytellerName?: string;

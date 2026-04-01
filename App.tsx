@@ -383,7 +383,13 @@ const App: React.FC = () => {
       return params.get('name') || undefined;
     } catch { return undefined; }
   })();
-  if (isLoadingShared) return <StoryLoadingCinema storytellerName={pendingName} />;
+  // Minimum 5s splash — ensures user sees the cinematic intro before story loads
+  const [minSplashDone, setMinSplashDone] = React.useState(false);
+  React.useEffect(() => {
+    const t = setTimeout(() => setMinSplashDone(true), 5000);
+    return () => clearTimeout(t);
+  }, []);
+  if (isLoadingShared || !minSplashDone) return <StoryLoadingCinema storytellerName={sharedStory?.storytellerName || pendingName} />;
   if (!isInitialized) return null;
 
   // ── Share link — show story publicly, no auth required ────────────────────
@@ -397,6 +403,7 @@ const App: React.FC = () => {
           onViewShelf={undefined}
           onReorderBeats={undefined}
           isSharedView={true}
+          autoPlayCinematic={true}
           onShare={() => handleShareStory(sharedStory)}
         />
       </ErrorBoundary>

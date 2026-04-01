@@ -41,7 +41,7 @@ export const YourStoryScreen: React.FC<YourStoryScreenProps> = ({
   story, onRestart, narratorVoice = 'Kore', onViewShelf, onBack,
   onReorderBeats, isSharedView = false, onRefineNarrative,
 }) => {
-  const [viewMode, setViewMode] = useState<'cinematic' | 'details'>('cinematic');
+  const [viewMode, setViewMode] = useState<'cinematic' | 'details'>('details');
   const [activeTab, setActiveTab] = useState<DetailTab>('overview');
   const [isViewerOpen, setIsViewerOpen] = useState(false);
   const [toasts, setToasts] = useState<any[]>([]);
@@ -205,11 +205,9 @@ export const YourStoryScreen: React.FC<YourStoryScreenProps> = ({
   };
 
   // ── Cinematic Mode ────────────────────────────────────────────────────────
-  // For shared views, only show cinematic if user explicitly clicked Re-watch
-  // This prevents the black flash on initial load
   if (viewMode === 'cinematic') {
     return (
-      <div className="h-full w-full relative" style={{ background: isSharedView ? '#f5f0e8' : '#000000' }}>
+      <div style={{ position: "fixed", inset: 0, zIndex: 50, background: "#000" }}>
         <CinematicReveal
           story={storyWithEdits as any}
           onRestart={onRestart}
@@ -241,7 +239,7 @@ export const YourStoryScreen: React.FC<YourStoryScreenProps> = ({
       {/* Tab Bar */}
       <div className="flex-shrink-0 bg-heritage-cream border-b border-heritage-parchment px-4 pt-4 pb-0">
         <div className="flex items-center justify-between mb-3 px-2">
-          <button onClick={() => setViewMode('cinematic')} className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-heritage-warmGold hover:text-heritage-ink transition-colors">▶ Re-watch Movie</button>
+          <button onClick={() => setViewMode('cinematic')} title="Watch the cinematic story" className="flex items-center justify-center w-7 h-7 rounded-full text-heritage-warmGold hover:bg-heritage-warmGold/10 transition-all" style={{ border: '1px solid rgba(196,151,59,0.3)' }}>▶</button>
           <h2 className="text-sm font-display font-black text-heritage-ink tracking-tight truncate max-w-[160px]">
             {storytellerName}'s {(story as any).petMode ? 'Tribute' : 'Legacy'}
           </h2>
@@ -266,6 +264,68 @@ export const YourStoryScreen: React.FC<YourStoryScreenProps> = ({
 
         {activeTab === 'overview' && (
           <div className="p-6 lg:p-10 max-w-4xl mx-auto space-y-10 pb-32">
+
+            {/* ── Cinematic Hero Card — big inviting play button ──────────── */}
+            <div
+              onClick={() => setViewMode('cinematic')}
+              className="relative rounded-2xl overflow-hidden cursor-pointer group"
+              style={{
+                background: '#0f0d0b',
+                minHeight: 200,
+                border: '1px solid rgba(196,151,59,0.25)',
+                boxShadow: '0 8px 40px rgba(0,0,0,0.3)',
+              }}
+            >
+              {localImages[0]?.image_url && (
+                <img
+                  src={localImages[0].image_url}
+                  alt=""
+                  className="absolute inset-0 w-full h-full object-cover opacity-35 group-hover:opacity-50 transition-opacity duration-500"
+                  style={{ filter: 'saturate(0.8)' }}
+                />
+              )}
+              <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, rgba(8,4,2,0.9) 0%, rgba(8,4,2,0.3) 60%, transparent 100%)' }} />
+              <div className="relative z-10 flex flex-col items-center justify-center py-12 gap-5">
+                <div
+                  className="w-20 h-20 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform duration-300"
+                  style={{ background: 'rgba(196,151,59,0.12)', border: '1.5px solid rgba(196,151,59,0.5)' }}
+                >
+                  <span style={{ fontSize: 28, color: 'rgba(196,151,59,0.9)', marginLeft: 4 }}>▶</span>
+                </div>
+                <div className="text-center px-6">
+                  <p className="font-display font-black text-white text-xl tracking-tight mb-1">
+                    Watch {storytellerName}'s Story
+                  </p>
+                  <p style={{ fontSize: 9, fontWeight: 900, letterSpacing: '0.3em', textTransform: 'uppercase', color: 'rgba(196,151,59,0.5)' }}>
+                    Cinematic · Narrated · Full Experience
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* ── Uploaded source materials ──────────────────────────────── */}
+            {(realAssets.length > 0 || (story.artifacts || []).some((a: any) => a.extracted_text || a.title)) && (
+              <section style={{ background: 'rgba(8,6,4,0.96)', borderRadius: '1.5rem', padding: '24px', border: '1px solid rgba(196,151,59,0.15)' }}>
+                <div style={{ fontSize: 8, fontWeight: 900, letterSpacing: '.5em', textTransform: 'uppercase', color: 'rgba(196,151,59,0.4)', fontFamily: 'system-ui', marginBottom: 16, textAlign: 'center' }}>
+                  Source Materials
+                </div>
+                {realAssets.length > 0 && (
+                  <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginBottom: 16 }}>
+                    {realAssets.map((asset: any, i: number) => (
+                      <div key={i} style={{ flex: 1, maxWidth: 140, borderRadius: 10, overflow: 'hidden', border: '1px solid rgba(196,151,59,0.2)' }}>
+                        <img src={asset.public_url} alt={`${storytellerName}`} style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', display: 'block' }} />
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {(story.artifacts || []).filter((a: any) => a.extracted_text || a.title).slice(0, 2).map((artifact: any, i: number) => (
+                  <div key={i} style={{ marginTop: 10, padding: '12px 16px', background: 'rgba(255,255,255,0.04)', borderRadius: 8, border: '1px solid rgba(255,255,255,0.06)' }}>
+                    {artifact.title && <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(196,151,59,0.6)', letterSpacing: '.15em', textTransform: 'uppercase', marginBottom: 6 }}>{artifact.title}</div>}
+                    {artifact.extracted_text && <p style={{ fontSize: 12, color: 'rgba(245,236,215,0.45)', lineHeight: 1.6, fontStyle: 'italic', fontFamily: 'Georgia, serif', maxHeight: 80, overflow: 'hidden' }}>{artifact.extracted_text.slice(0, 300)}{artifact.extracted_text.length > 300 ? '…' : ''}</p>}
+                  </div>
+                ))}
+              </section>
+            )}
 
             {/* ── Real Photo Anchor (Band of Brothers) ───────────────────── */}
             {realAssets.length > 0 && (
