@@ -100,6 +100,11 @@ const CinematicReveal: React.FC<CinematicRevealProps> = ({
   const narrationTextTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const musicRef = useRef<HTMLAudioElement | null>(null);
+  const [musicVolume, setMusicVolume] = useState(0.25);
+  const [musicPaused, setMusicPaused] = useState(false);
+  const [availableTracks, setAvailableTracks] = useState<{ url: string; title?: string }[]>([]);
+  const [currentTrackIdx, setCurrentTrackIdx] = useState(0);
+  const [showMusicPanel, setShowMusicPanel] = useState(false);
   const sceneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const controlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -126,7 +131,10 @@ const CinematicReveal: React.FC<CinematicRevealProps> = ({
     // Pre-fetch music URL via musicService (Kevin MacLeod curated tracks, no API key)
     const query = getMusicQueryForStory(story);
     findMusicFromSuggestion(query).then(tracks => {
-      if (tracks[0]?.url) musicUrlRef.current = tracks[0].url;
+      if (tracks.length > 0) {
+        musicUrlRef.current = tracks[0].url;
+        setAvailableTracks(tracks.slice(0, 5)); // keep up to 5 tracks for selection
+      }
     }).catch(() => { /* silent — music is non-critical */ });
     // Clean up audio when story changes
     if (musicRef.current) { musicRef.current.pause(); musicRef.current.src = ''; musicRef.current = null; }
@@ -135,16 +143,53 @@ const CinematicReveal: React.FC<CinematicRevealProps> = ({
   const fadeMusic = useCallback((targetVol: number, ms = 1500) => {
     if (!musicRef.current) return;
     const audio = musicRef.current;
+    // Scale target by user's chosen volume — never exceed their preference
+    const scaledTarget = targetVol * musicVolume / 0.25;
+    const clampedTarget = Math.max(0, Math.min(musicVolume, scaledTarget));
     const startVol = audio.volume;
-    const step = (targetVol - startVol) / (ms / 50);
+    const step = (clampedTarget - startVol) / (ms / 50);
     const interval = setInterval(() => {
       audio.volume = Math.max(0, Math.min(1, audio.volume + step));
-      if (Math.abs(audio.volume - targetVol) < 0.02) {
-        audio.volume = targetVol;
+      if (Math.abs(audio.volume - clampedTarget) < 0.02) {
+        audio.volume = clampedTarget;
         clearInterval(interval);
       }
     }, 50);
+  }, [musicVolume]);
+
+  // Handle user volume changes
+  const handleVolumeChange = useCallback((vol: number) => {
+    setMusicVolume(vol);
+    if (musicRef.current) musicRef.current.volume = vol;
   }, []);
+
+  // Handle user pause/resume of music
+  const handleMusicToggle = useCallback(() => {
+    if (!musicRef.current) return;
+    if (musicPaused) {
+      musicRef.current.play().catch(() => {});
+      setMusicPaused(false);
+    } else {
+      musicRef.current.pause();
+      setMusicPaused(true);
+    }
+  }, [musicPaused]);
+
+  // Switch to a different track
+  const handleTrackChange = useCallback((idx: number) => {
+    if (!availableTracks[idx]) return;
+    setCurrentTrackIdx(idx);
+    musicUrlRef.current = availableTracks[idx].url;
+    if (musicRef.current) {
+      const wasPlaying = !musicRef.current.paused;
+      const vol = musicRef.current.volume;
+      musicRef.current.pause();
+      musicRef.current.src = availableTracks[idx].url;
+      musicRef.current.volume = vol;
+      if (wasPlaying) musicRef.current.play().catch(() => {});
+    }
+    setShowMusicPanel(false);
+  }, [availableTracks]);
 
   // narrationCache now stores { audioBuffer, audioContext } objects
   const narrationCache = useRef<Record<number, { audioBuffer: AudioBuffer; audioContext: AudioContext }>>({});
@@ -154,9 +199,12 @@ const CinematicReveal: React.FC<CinematicRevealProps> = ({
     if (narrationCache.current[sceneIdx]) return narrationCache.current[sceneIdx];
 
     // ── CHECK PRE-BAKED BEAT AUDIO (generated at story creation time) ────────
-    // beat_index -1 is the opening line, 0+ are beats
+    // Only use pre-baked audio if it matches the selected narratorVoice (Kore default)
+    // Pre-baked is always generated with 'Kore' — if user picked 'Fenrir', skip and use live TTS
     const beatAudio = (story as any).beatAudio || [];
-    const cached = beatAudio.find((b: any) => b.beat_index === sceneIdx || b.beat_index === sceneIdx - 1);
+    const cached = narratorVoice === 'Kore'
+      ? beatAudio.find((b: any) => b.beat_index === sceneIdx || b.beat_index === sceneIdx - 1)
+      : null;
     if (cached?.audio_base64) {
       try {
         const audioCtx = new AudioContext({ sampleRate: 24000 });
@@ -208,21 +256,31 @@ const CinematicReveal: React.FC<CinematicRevealProps> = ({
     if (sceneTimerRef.current) clearTimeout(sceneTimerRef.current);
     if (progressTimerRef.current) clearInterval(progressTimerRef.current);
 
-    // (narration stopped via playAudioBuffer stop fn — no ref needed)
+    // ── SHOW SCENE IMMEDIATELY — don't block on TTS ─────────────────────────
+    // Scene image and text appear instantly. Audio joins when ready.
+    // This eliminates the 20-30s blank wait Scott and Derek experienced.
 
-    // Fetch narration for this scene + prefetch next
+    // Kick off TTS fetch + next scene prefetch in background — non-blocking
     setLoadingNarration(true);
-    const [narResult] = await Promise.all([
+    const narFetch = Promise.all([
       fetchNarration(idx),
       idx + 1 < totalScenes ? fetchNarration(idx + 1) : Promise.resolve(null),
     ]).catch(() => [null, null]);
+
+    // Give the scene a short head start to appear visually before audio
+    // If TTS arrives quickly (pre-baked) it plays almost immediately
+    // If it's a live API call, scene has already been showing for the wait time
+    const VISUAL_HEAD_START = 600; // ms — scene shows, then audio joins
+    await new Promise(r => setTimeout(r, VISUAL_HEAD_START));
+
+    const [narResult] = await narFetch;
     setLoadingNarration(false);
     setNarrationReady(!!narResult);
 
-    let sceneDuration = 8000; // fallback duration
+    let sceneDuration = 9000; // fallback — scene shows for 9s with text if no audio
 
     if (narResult) {
-      // Duck music, play narration via narrationService
+      // Duck music, play narration
       if (musicRef.current && !musicRef.current.paused) fadeMusic(0.08, 800);
       let stopNarration: (() => void) | null = null;
       await new Promise<void>(resolve => {
@@ -230,16 +288,14 @@ const CinematicReveal: React.FC<CinematicRevealProps> = ({
           onEnded: resolve,
           gainValue: 1.0,
         });
-        // Track the active context so pause/stop works
         activeAudioCtxRef.current = narResult.audioContext;
         sceneStartTimeRef.current = narResult.audioContext.currentTime;
-        // Safety timeout — advance anyway after 60s if audio hangs
-        setTimeout(resolve, 60000);
+        setTimeout(resolve, 60000); // safety timeout
       });
       activeAudioCtxRef.current = null;
       if (stopNarration) { try { (stopNarration as () => void)(); } catch {} }
       if (musicRef.current && !musicRef.current.paused) fadeMusic(0.25, 1000);
-      sceneDuration = 2000;
+      sceneDuration = 2000; // short pause after narration before next scene
     }
 
     // Progress bar animation
@@ -654,6 +710,84 @@ const CinematicReveal: React.FC<CinematicRevealProps> = ({
           </div>
         )}
       </div>
+
+      {/* ── Music controls ────────────────────────────────────────────────────── */}
+      {isPlaying && (
+        <div
+          className="absolute top-14 left-4 z-30 flex items-center gap-2 transition-opacity duration-500"
+          style={{ opacity: showControls ? 1 : 0 }}
+          onClick={e => e.stopPropagation()}
+        >
+          {/* Music toggle */}
+          <button
+            onClick={handleMusicToggle}
+            style={{
+              width: 32, height: 32, borderRadius: '50%',
+              background: 'rgba(0,0,0,0.5)',
+              border: '1px solid rgba(255,255,255,0.15)',
+              color: 'rgba(255,255,255,0.7)',
+              fontSize: 13, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+            title={musicPaused ? 'Resume music' : 'Pause music'}
+          >{musicPaused ? '♪' : '⏸'}</button>
+
+          {/* Volume slider */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>🔈</span>
+            <input
+              type="range" min={0} max={1} step={0.05}
+              value={musicVolume}
+              onChange={e => handleVolumeChange(parseFloat(e.target.value))}
+              style={{ width: 72, accentColor: 'rgba(196,151,59,0.8)', cursor: 'pointer' }}
+            />
+            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>🔊</span>
+          </div>
+
+          {/* Track selector */}
+          {availableTracks.length > 1 && (
+            <div style={{ position: 'relative' }}>
+              <button
+                onClick={() => setShowMusicPanel(p => !p)}
+                style={{
+                  padding: '4px 10px', borderRadius: 12,
+                  background: 'rgba(0,0,0,0.5)',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  color: 'rgba(196,151,59,0.8)',
+                  fontSize: 9, cursor: 'pointer',
+                  fontWeight: 700, letterSpacing: '0.1em',
+                  textTransform: 'uppercase',
+                }}
+              >♫ Tracks</button>
+              {showMusicPanel && (
+                <div style={{
+                  position: 'absolute', top: 38, left: 0,
+                  background: 'rgba(10,8,12,0.95)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: 8, padding: 8, minWidth: 180,
+                  display: 'flex', flexDirection: 'column', gap: 4,
+                }}>
+                  {availableTracks.map((track, i) => (
+                    <button
+                      key={i}
+                      onClick={() => handleTrackChange(i)}
+                      style={{
+                        padding: '7px 12px', borderRadius: 4, border: 'none',
+                        background: i === currentTrackIdx ? 'rgba(196,151,59,0.2)' : 'transparent',
+                        color: i === currentTrackIdx ? 'rgba(196,151,59,0.9)' : 'rgba(255,255,255,0.6)',
+                        fontSize: 11, cursor: 'pointer', textAlign: 'left',
+                        fontStyle: 'italic',
+                      }}
+                    >
+                      {i === currentTrackIdx ? '▶ ' : '   '}{track.title || `Track ${i + 1}`}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Top controls (always visible on hover) ────────────────────────────── */}
       <div
