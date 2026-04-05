@@ -20,11 +20,12 @@ import WritingAssistantPanel from '../../components/WritingAssistantPanel';
 import InspirationPanel from '../../components/InspirationPanel';
 import { ImageEditModal, SceneToEdit } from '../../components/ImageEditModal';
 import { GenerateMovieButton } from '../../components/GenerateMovieButton';
+import { TributeWall } from '../../components/TributeWall';
 
 const containerVariants = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.1 } } };
 const itemVariants = { hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0 } };
 
-type DetailTab = 'overview' | 'memory-lane' | 'map' | 'heirlooms' | 'insights';
+type DetailTab = 'overview' | 'memory-lane' | 'map' | 'heirlooms' | 'insights' | 'tribute';
 
 interface YourStoryScreenProps {
   story: ActiveStory;
@@ -42,7 +43,9 @@ export const YourStoryScreen: React.FC<YourStoryScreenProps> = ({
   story, onRestart, narratorVoice = 'Kore', onViewShelf, onBack,
   onReorderBeats, isSharedView = false, autoPlayCinematic = false, onRefineNarrative,
 }) => {
-  const [viewMode, setViewMode] = useState<'cinematic' | 'details'>('details');
+  const [viewMode, setViewMode] = useState<'cinematic' | 'details'>(
+    isSharedView || autoPlayCinematic ? 'cinematic' : 'details'
+  );
   const [activeTab, setActiveTab] = useState<DetailTab>('overview');
   const [isViewerOpen, setIsViewerOpen] = useState(false);
   const [toasts, setToasts] = useState<any[]>([]);
@@ -218,7 +221,7 @@ export const YourStoryScreen: React.FC<YourStoryScreenProps> = ({
           onComplete={() => setViewMode('details')}
         />
         <div className="fixed bottom-6 right-6 z-[400] flex flex-col gap-3 items-end">
-          <button onClick={() => setViewMode('details')} className="px-6 py-3 bg-heritage-cream/90 backdrop-blur-md rounded-full text-[10px] font-black text-heritage-ink uppercase tracking-widest border border-heritage-parchment shadow-xl hover:bg-heritage-cream transition-all">View Details</button>
+          <button onClick={() => setViewMode('details')} className="px-6 py-3 bg-heritage-cream/90 backdrop-blur-md rounded-full text-[10px] font-black text-heritage-ink uppercase tracking-widest border border-heritage-parchment shadow-xl hover:bg-heritage-cream transition-all">{isSharedView ? 'Explore the Story' : 'View Details'}</button>
           {onViewShelf && <button onClick={onViewShelf} className="px-6 py-3 bg-heritage-burgundy/90 backdrop-blur-md rounded-full text-[10px] font-black text-white uppercase tracking-widest shadow-xl hover:bg-heritage-burgundy transition-all">📚 All Stories</button>}
         </div>
       </div>
@@ -232,6 +235,7 @@ export const YourStoryScreen: React.FC<YourStoryScreenProps> = ({
     { id: 'map' as DetailTab,         label: 'Life Map',    emoji: '🗺️', show: hasTimeline },
     { id: 'heirlooms' as DetailTab,   label: 'Heirlooms',   emoji: '🏺', show: true },
     { id: 'insights' as DetailTab,    label: 'Insights',    emoji: '✦',  show: hasInsights },
+    { id: 'tribute' as DetailTab,     label: 'Tribute',     emoji: '🕯️', show: !isSharedView },
   ].filter(t => t.show);
 
   return (
@@ -674,6 +678,15 @@ export const YourStoryScreen: React.FC<YourStoryScreenProps> = ({
               <DownloadMemoryBook story={{ ...story, generatedImages: localImages, narrative: editedNarrative || story.narrative } as any} />
               <GenerateMovieButton story={story} />
               <button onClick={handleShareWithFamily} className="px-10 py-5 bg-heritage-cream border border-heritage-ink/10 text-heritage-ink font-black rounded-full shadow-sm flex items-center justify-center gap-4 text-xs uppercase tracking-widest hover:bg-heritage-linen transition-all"><ShareIcon className="w-4 h-4" />{copyFeedback ? 'Link Copied!' : 'Share with Family'}</button>
+              {!isSharedView && (
+                <button
+                  onClick={() => {
+                    const url = window.location.origin + '?tribute=' + story.sessionId + '&for=' + encodeURIComponent(story.storytellerName || '');
+                    navigator.clipboard.writeText(url).then(() => showToast('Tribute link copied!', 'success'));
+                  }}
+                  className="px-10 py-5 bg-heritage-cream border border-heritage-ink/10 text-heritage-ink font-black rounded-full shadow-sm flex items-center justify-center gap-4 text-xs uppercase tracking-widest hover:bg-heritage-linen transition-all"
+                >🕯️ Invite Memories</button>
+              )}
             </div>
 
             <div className="pt-4 pb-8">
@@ -699,6 +712,11 @@ export const YourStoryScreen: React.FC<YourStoryScreenProps> = ({
         {activeTab === 'memory-lane' && <div className="h-full w-full"><MemoryLaneView story={story as any} /></div>}
         {activeTab === 'map' && <div className="h-full w-full"><MemoryMapView story={story as any} /></div>}
         {activeTab === 'heirlooms' && <div className="h-full w-full"><HeirloomsGallery artifacts={story.artifacts || []} /></div>}
+        {activeTab === 'tribute' && (
+          <div className="h-full w-full overflow-y-auto bg-heritage-cream">
+            <TributeWall storyId={story.sessionId} storySubject={story.storytellerName || 'them'} />
+          </div>
+        )}
         {activeTab === 'insights' && (
           <div className="h-full w-full overflow-y-auto bg-heritage-cream">
             <div className="max-w-2xl mx-auto p-6 lg:p-10">

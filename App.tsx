@@ -13,6 +13,7 @@ import Loader2Icon from './components/icons/Loader2Icon';
 
 // Storyteller Flow Screens
 import { WelcomeScreen } from './pages/storyteller/WelcomeScreen';
+import { TributeContributePage } from './pages/storyteller/TributeContributePage';
 import GatheringScreen from './pages/storyteller/GatheringScreen';
 import { ConnieFullScreen } from './pages/storyteller/ConnieFullScreen';
 import { YourStoryScreen } from './pages/storyteller/YourStoryScreen';
@@ -43,6 +44,8 @@ const App: React.FC = () => {
   const [isInitialized, setIsInitialized] = useState(false);
   const [sharedStory, setSharedStory] = useState<ActiveStory | null>(null);
   const [isLoadingShared, setIsLoadingShared] = useState(false);
+  const [tributeStoryId, setTributeStoryId] = useState<string | null>(null);
+  const [tributeSubject, setTributeSubject] = useState<string>('');
 
   const [phase, setPhase] = useState<StorytellerPhase>('welcome');
   const [subject, setSubject] = useState('');
@@ -68,6 +71,18 @@ const App: React.FC = () => {
     if (checkElderlyMode()) enableElderlyMode();
     const initializeApp = async () => {
       const params = new URLSearchParams(window.location.search);
+
+      // ── TRIBUTE LINK ────────────────────────────────────────────────────
+      const tributeId = params.get('tribute');
+      const tributeFor = params.get('for');
+      if (tributeId) {
+        window.history.replaceState({}, '', window.location.pathname);
+        setTributeStoryId(tributeId);
+        setTributeSubject(tributeFor ? decodeURIComponent(tributeFor) : 'this person');
+        setIsInitialized(true);
+        return;
+      }
+
       const storyId = params.get('story');
       if (storyId) {
         // ── SHARE LINK PATCH ──────────────────────────────────────────────────
@@ -410,6 +425,19 @@ const App: React.FC = () => {
     );
   }
 
+  // ── Tribute contribution view — no auth needed ────────────────────────
+  if (tributeStoryId) {
+    return (
+      <ErrorBoundary>
+        <TributeContributePage
+          storyId={tributeStoryId}
+          storySubject={tributeSubject}
+          onDone={() => window.location.href = '/'}
+        />
+      </ErrorBoundary>
+    );
+  }
+
   if (!isAuthenticated || !user) {
     return <LandingGate onLogin={handleLogin} />;
   }
@@ -475,7 +503,7 @@ const App: React.FC = () => {
           )}
           {phase === 'creating' && (
             <motion.div key="creating" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
-              <ProgressOverlay stage={progressStage} />
+              <StoryLoadingCinema storytellerName={subject || 'Someone Special'} />
             </motion.div>
           )}
           {phase === 'story' && activeStory && (
@@ -488,6 +516,7 @@ const App: React.FC = () => {
                 onBack={() => setPhase('welcome')}
                 onRefineNarrative={handleRefineNarrative}
                 onShare={() => handleShareStory(activeStory)}
+                autoPlayCinematic={true}
               />
             </motion.div>
           )}

@@ -197,7 +197,7 @@ const GatheringScreen: React.FC<GatheringScreenProps> = ({
   useEffect(() => {
     if (totalMaterials > prevCount.current && totalMaterials > 0) {
       const reactions = [
-        `That's wonderful — thank you for sharing. Add more if you have them, or I'm ready to begin whenever you are.`,
+        `That's wonderful — thank you for sharing. Add more if you have them, or I am ready to begin whenever you are.`,
         `Beautiful. Every piece helps tell a richer story. Feel free to add more, or tap "Create the Story" when you're ready.`,
         `I can already feel this story taking shape. More photos are always welcome, or we can start whenever you'd like.`,
       ];
@@ -336,29 +336,59 @@ const GatheringScreen: React.FC<GatheringScreenProps> = ({
 
   // ── Scan complete handler ─────────────────────────────────────────────────
   const handleScanComplete = async (scan: ScanResult) => {
-    if (scan.type === 'photo' || !scan.transcribedText) {
-      const mimeType = 'image/png'; // scanService now always returns PNG
-      const b = atob(scan.base64), ab = new ArrayBuffer(b.length), ia = new Uint8Array(ab);
-      for (let i = 0; i < b.length; i++) ia[i] = b.charCodeAt(i);
-      const file = new File([new Blob([ab], { type: mimeType })], `scan-${Date.now()}.png`, { type: mimeType });
-      setIsUploading(true);
-      try {
-        const a = await storageService.uploadFile(file, { title: `Scanned ${scan.documentType || 'Photo'}`, tags: ['scan'] });
-        onPhotos([a]);
-        showToast('Scan added ✓', 'success');
-      } catch { showToast('Scan upload failed', 'error'); }
-      finally { setIsUploading(false); }
-    } else {
-      const parts = [`[Scanned ${scan.documentType || 'Document'} — ${scan.era || 'Unknown Era'}]`];
-      if (scan.description) parts.push(scan.description);
-      if (scan.transcribedText) parts.push(`\nTRANSCRIPT:\n${scan.transcribedText}`);
-      if (scan.keyFacts?.length) parts.push(`\nKEY FACTS: ${scan.keyFacts.join(' · ')}`);
-      onText(`Scan: ${scan.documentType || 'Document'}`, parts.join('\n'));
-      showToast('Document transcribed ✓', 'success');
+    // Always upload the image first
+    const mimeType = 'image/png';
+    const b = atob(scan.base64), ab = new ArrayBuffer(b.length), ia = new Uint8Array(ab);
+    for (let i = 0; i < b.length; i++) ia[i] = b.charCodeAt(i);
+    const file = new File([new Blob([ab], { type: mimeType })], 'scan-' + Date.now() + '.png', { type: mimeType });
+    setIsUploading(true);
+    try {
+      const a = await storageService.uploadFile(file, { title: 'Scanned ' + (scan.documentType || 'Photo'), tags: ['scan'] });
+      onPhotos([a]);
+    } catch { showToast('Scan upload failed', 'error'); }
+    finally { setIsUploading(false); }
+
+    // Ask Connie to analyze what was scanned
+    setIsConnieTyping(true);
+    setConnieMessage('');
+    try {
+      const analysisResponse = await fetch(CASCADE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY },
+        body: JSON.stringify({
+          action: 'analyze_photo',
+          photo_base64: scan.base64,
+          photo_mime_type: 'image/png',
+          context: subject,
+        }),
+      });
+      if (analysisResponse.ok) {
+        const d = await analysisResponse.json();
+        const parts = ['[Scanned ' + (scan.documentType || 'Document') + (d.era ? ' — ' + d.era : '') + ']'];
+        if (d.description) parts.push(d.description);
+        if (d.transcribed_text || scan.transcribedText) parts.push('\nTRANSCRIPT:\n' + (d.transcribed_text || scan.transcribedText));
+        if (d.verified_facts && d.verified_facts.length) parts.push('\nKEY FACTS: ' + d.verified_facts.join(' · '));
+        onText('Scan: ' + (scan.documentType || 'Document'), parts.join('\n'));
+        setConnieMessage(d.description
+          ? 'I can see this — ' + d.description.substring(0, 80) + (d.description.length > 80 ? '...' : '') + '. This will add something meaningful to the story.'
+          : 'Got it — I have added what I found. Add more or I am ready to begin whenever you are.');
+      } else {
+        const parts = ['[Scanned ' + (scan.documentType || 'Document') + ' — ' + (scan.era || 'Unknown Era') + ']'];
+        if (scan.description) parts.push(scan.description);
+        if (scan.transcribedText) parts.push('\nTRANSCRIPT:\n' + scan.transcribedText);
+        if (scan.keyFacts && scan.keyFacts.length) parts.push('\nKEY FACTS: ' + scan.keyFacts.join(' · '));
+        onText('Scan: ' + (scan.documentType || 'Document'), parts.join('\n'));
+        setConnieMessage('Scan added. Ready to create whenever you are.');
+      }
+    } catch {
+      if (scan.transcribedText) onText('Scan: ' + (scan.documentType || 'Document'), scan.transcribedText);
+      setConnieMessage('Scan added. Ready to create whenever you are.');
+    } finally {
+      setIsConnieTyping(false);
+      showToast('Scan added ✓', 'success');
     }
   };
-
-  // ── Create story ──────────────────────────────────────────────────────────
+    // ── Create story ──────────────────────────────────────────────────────────
   const handleGenerate = () => {
     if (!canCreate) return;
     const allVerifiedFacts = extractedPhotoFacts.flatMap(f => f.verifiedFacts);
@@ -400,28 +430,35 @@ const GatheringScreen: React.FC<GatheringScreenProps> = ({
         {/* Connie message */}
         <ConnieBubble text={connieMessage} isTyping={isConnieTyping} />
 
-        {/* ── THREE BIG ACTION BUTTONS ── */}
-        <div style={{ display: 'flex', gap: 12, marginBottom: 28 }}>
-          <ActionCard
-            icon="📷"
-            label="Camera"
-            sublabel="Snap a photo or scan a document"
-            onClick={() => setIsScannerOpen(true)}
-            disabled={isUploading}
-          />
-          <ActionCard
-            icon="🖼️"
-            label="Upload"
-            sublabel="Photos, PDFs, documents"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isUploading}
-          />
-          <ActionCard
-            icon="🎙️"
-            label="Talk"
-            sublabel="Tell Connie the story"
-            onClick={onTalk}
-          />
+        {/* ── CONNIE PRIMARY CTA ── */}
+        <button
+          onClick={onTalk}
+          style={{
+            width: '100%', padding: '18px 24px', marginBottom: 16,
+            background: 'linear-gradient(135deg, rgba(196,151,59,0.15), rgba(196,151,59,0.05))',
+            border: '1.5px solid rgba(196,151,59,0.4)', borderRadius: 16,
+            display: 'flex', alignItems: 'center', gap: 16,
+            cursor: 'pointer', transition: 'all 0.2s',
+          }}
+        >
+          <img src={CONNIE_PORTRAIT} alt="Connie"
+            style={{ width: 48, height: 48, borderRadius: '50%', objectFit: 'cover',
+              border: '2px solid rgba(196,151,59,0.5)', flexShrink: 0 }} />
+          <div style={{ textAlign: 'left', flex: 1 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'rgba(253,246,236,0.95)',
+              fontFamily: 'Georgia, serif', marginBottom: 3 }}>Talk with Connie</div>
+            <div style={{ fontSize: 12, color: 'rgba(196,151,59,0.7)', fontFamily: 'system-ui' }}>
+              Just speak — she'll ask the right questions</div>
+          </div>
+          <div style={{ fontSize: 20, opacity: 0.6 }}>›</div>
+        </button>
+
+        {/* ── Secondary: Upload + Camera ── */}
+        <div style={{ display: 'flex', gap: 10, marginBottom: 28 }}>
+          <ActionCard icon="🖼️" label="Upload" sublabel="Photos, PDFs, documents"
+            onClick={() => fileInputRef.current?.click()} disabled={isUploading} />
+          <ActionCard icon="📷" label="Camera / Scan" sublabel="Take a photo or scan"
+            onClick={() => setIsScannerOpen(true)} disabled={isUploading} />
         </div>
 
         <input
