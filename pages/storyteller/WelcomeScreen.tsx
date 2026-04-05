@@ -20,7 +20,7 @@ interface WelcomeScreenProps {
 
 type Persona = 'curator' | 'keeper' | 'subject' | 'pet' | null;
 
-const CONNIE_IMG = 'https://storage.googleapis.com/westerns1978-digital-assets/Websites/story-scribe/connie-ai.png';
+const CONNIE_IMG = 'https://storage.googleapis.com/westerns1978-digital-assets/Websites/wissums/connie-ai.png';
 
 const LANGUAGES = [
   { code: 'en', native: 'English' }, { code: 'es', native: 'Español' },
@@ -30,18 +30,18 @@ const LANGUAGES = [
   { code: 'af', native: 'Afrikaans' },
 ];
 
-const HINTS = ['Grandma Rose…', 'Dad…', 'Uncle Harold…', 'Mom…', 'Grandpa Joe…', 'Aunt Bette…'];
+const HINTS = ['Buddy…', 'Bella…', 'Max…', 'Luna…', 'Charlie…', 'Daisy…', 'Ellie…'];
 const PET_HINTS = ['Buddy…', 'Bella…', 'Max…', 'Luna…', 'Charlie…', 'Daisy…', 'Ellie…'];
 
 const PERSONAS = [
   {
-    id: 'curator' as Persona,
-    icon: '📋',
-    title: 'Quick Tribute',
-    badge: 'CURATOR',
+    id: 'pet' as Persona,
+    icon: '🐾',
+    title: 'Quick Pet Story',
+    badge: 'QUICK',
     tagline: 'A story in minutes.',
-    description: 'Upload a photo or write a few sentences. Connie crafts a complete cinematic legacy — images, timeline, music — in under 2 minutes.',
-    useCases: ['Memorial services', 'Obituary tributes', 'Time-sensitive moments'],
+    description: 'Upload a photo or write a few sentences about your pet. Connie crafts a cinematic tribute — images, timeline, music — in under 2 minutes.',
+    useCases: ['Dogs & cats', 'Quick tributes', 'Share with family'],
     color: '#C4973B',
     glow: 'rgba(196,151,59,0.15)',
     border: 'rgba(196,151,59,0.3)',
@@ -49,11 +49,11 @@ const PERSONAS = [
   {
     id: 'keeper' as Persona,
     icon: '📖',
-    title: 'Full Biography',
-    badge: 'KEEPER',
+    title: 'Full Pet Story',
+    badge: 'FULL',
     tagline: 'Build it chapter by chapter.',
-    description: 'Interview with Connie. Add photos, documents, family voices. Control the tone, timeline, and narrative style. Build something that lasts generations.',
-    useCases: ['Life review', 'Family historians', 'Legacy projects'],
+    description: "Interview with Connie. Add photos, share your favorite memories. Build a complete story of your pet's life that lasts forever.",
+    useCases: ['Dogs, cats, horses', 'Family pet history', 'Memory book'],
     color: '#8B2E3B',
     glow: 'rgba(139,46,59,0.15)',
     border: 'rgba(139,46,59,0.35)',
@@ -62,25 +62,13 @@ const PERSONAS = [
     id: 'subject' as Persona,
     icon: '🎙️',
     title: 'Talk to Connie',
-    badge: 'SUBJECT',
+    badge: 'VOICE',
     tagline: 'Just talk. She does the rest.',
-    description: "Connie listens, asks gentle questions, and quietly builds your story in the background. Perfect for seniors or anyone who just wants to share.",
-    useCases: ['Senior residents', 'Daily companion', 'Voice-first'],
+    description: "Connie listens, asks playful questions, and quietly builds your pet's story in the background. Perfect for when you just want to share memories.",
+    useCases: ['Voice-first', 'Easy sharing', 'All pets'],
     color: '#6B8E7A',
     glow: 'rgba(107,142,122,0.15)',
     border: 'rgba(107,142,122,0.3)',
-  },
-  {
-    id: 'pet' as Persona,
-    icon: '🐾',
-    title: 'Pet Tribute',
-    badge: 'BELOVED',
-    tagline: 'Honor their memory forever.',
-    description: 'Your dog, cat, horse — the companion who was always there. Connie creates a cinematic tribute to the animal who changed your life.',
-    useCases: ['Dogs & cats', 'Horses & companions', 'Any beloved animal'],
-    color: '#A07830',
-    glow: 'rgba(160,120,48,0.15)',
-    border: 'rgba(160,120,48,0.3)',
   },
 ];
 
@@ -114,7 +102,7 @@ const FieldGuideModal: React.FC<{ onClose: () => void }> = ({ onClose }) => (
       }}>
         <div>
           <div style={{ fontSize: 8, fontWeight: 900, letterSpacing: '.4em', textTransform: 'uppercase', color: 'rgba(196,151,59,0.5)', marginBottom: 4 }}>
-            Story Scribe
+            Wissums
           </div>
           <div style={{ fontFamily: 'Georgia,serif', fontWeight: 700, fontSize: '1.3rem', color: 'rgba(245,236,215,0.9)' }}>
             Field Guide
@@ -174,14 +162,14 @@ const FieldGuideModal: React.FC<{ onClose: () => void }> = ({ onClose }) => (
         <Divider />
 
         <Section title="🏥 Care Facility Guide" color="#8B2E3B">
-          <p style={bodyStyle}>Use this strategy to introduce Story Scribe to care facilities and senior living communities.</p>
+          <p style={bodyStyle}>Use this strategy to introduce Wissums to care facilities and senior living communities.</p>
           <Label>Value Proposition</Label>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
             {[
               ['Family Engagement', 'Increases family satisfaction by creating a powerful, positive touchpoint.'],
               ['Resident Wellbeing', 'Leverages the therapeutic benefits of reminiscence therapy.'],
               ['Marketing Differentiation', 'Offers a unique, high-value service that sets a facility apart.'],
-              ['Staff Efficiency', 'Structured activity with minimal staff overhead — Gemynd handles the technology.'],
+              ['Staff Efficiency', 'Structured activity with minimal staff overhead — Wissums handles the technology.'],
             ].map(([title, desc]) => (
               <div key={title} style={{ display: 'flex', gap: 12, padding: '10px 14px', borderRadius: 10, background: 'rgba(139,46,59,0.06)', border: '1px solid rgba(139,46,59,0.12)' }}>
                 <div style={{ fontSize: 9, fontWeight: 900, letterSpacing: '.15em', textTransform: 'uppercase', color: 'rgba(139,46,59,0.7)', flexShrink: 0, paddingTop: 2, minWidth: 130 }}>{title}</div>
@@ -393,7 +381,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
         {!persona ? (
           <>
             <div className="r2" style={{ width:'100%', marginBottom:8, textAlign:'center' }}>
-              <p style={{ fontSize:8, fontWeight:900, letterSpacing:'.44em', textTransform:'uppercase', color:'rgba(196,151,59,0.4)', marginBottom:10 }}>How will you use Story Scribe?</p>
+              <p style={{ fontSize:8, fontWeight:900, letterSpacing:'.44em', textTransform:'uppercase', color:'rgba(196,151,59,0.4)', marginBottom:10 }}>How will you use Wissums?</p>
             </div>
             <div className="r3" style={{ width:'100%', display:'flex', flexDirection:'column', gap:12, marginBottom:32 }}>
               {PERSONAS.map((p, i) => (

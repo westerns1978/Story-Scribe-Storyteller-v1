@@ -50,7 +50,7 @@ export const ConnieFloatingButton: React.FC<{
                     <header className="p-5 border-b border-white/5 flex justify-between items-center bg-gemynd-oxblood text-white">
                         <div className="flex items-center gap-3">
                             <div className="w-8 h-8 rounded-full overflow-hidden border border-white/20">
-                                <img src="https://storage.googleapis.com/westerns1978-digital-assets/Websites/story-scribe/connie-ai.png" alt="Connie" className="w-full h-full object-cover" />
+                                <img src="https://storage.googleapis.com/westerns1978-digital-assets/Websites/wissums/connie-ai.png" alt="Connie" className="w-full h-full object-cover" />
                             </div>
                             <span className="font-bold text-sm">Connie AI</span>
                         </div>
@@ -103,7 +103,7 @@ export const ConnieFloatingButton: React.FC<{
                         <Loader2Icon className="w-8 h-8 text-white" />
                     </div>
                 ) : (
-                    <img src="https://storage.googleapis.com/westerns1978-digital-assets/Websites/story-scribe/connie-ai.png" alt="Connie" className="w-full h-full object-cover" />
+                    <img src="https://storage.googleapis.com/westerns1978-digital-assets/Websites/wissums/connie-ai.png" alt="Connie" className="w-full h-full object-cover" />
                 )}
             </button>
         </div>

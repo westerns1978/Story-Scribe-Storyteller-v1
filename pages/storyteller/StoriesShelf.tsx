@@ -42,7 +42,7 @@ export const StoriesShelf: React.FC<StoriesShelfProps> = ({
         {/* Header */}
         <div className="text-center space-y-3">
           <button onClick={onBack} className="text-[9px] font-black uppercase tracking-[0.4em] text-white/30 hover:text-white/60 transition-colors mb-4 block mx-auto">← Back</button>
-          <img src="https://storage.googleapis.com/gemynd-public/projects/gemynd-portal/gemnyd-branding/Gemynd_Logo_Red_Version.png" className="w-10 mx-auto opacity-70" alt="Gemynd" />
+          <img src="https://storage.googleapis.com/gemynd-public/projects/gemynd-portal/gemnyd-branding/Wissums_Logo_Red_Version.png" className="w-10 mx-auto opacity-70" alt="Wissums" />
           <h1 className="text-3xl font-display font-black text-white tracking-tight">The Family <span className="text-heritage-warmGold">Archive</span></h1>
           <div className="flex items-center justify-center gap-4">
             <p className="text-white/40 font-serif italic text-sm">{stories.length} {stories.length === 1 ? 'legacy' : 'legacies'} preserved</p>

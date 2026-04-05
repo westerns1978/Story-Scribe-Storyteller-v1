@@ -149,7 +149,7 @@ export const VisualAuditPanel: React.FC<VisualAuditPanelProps> = ({
           
           <div className="px-4 pb-3">
              <p className="text-[10px] text-slate-500 text-center uppercase tracking-widest leading-none">
-               Streaming secured via Gemynd Uplink
+               Streaming secured via Wissums Uplink
              </p>
           </div>
         </>

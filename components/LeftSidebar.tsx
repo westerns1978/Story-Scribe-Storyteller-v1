@@ -38,9 +38,9 @@ const LeftSidebar: React.FC<{
             <div className="flex flex-col gap-1">
                 <div className="flex items-center gap-2">
                     <span className="text-2xl" role="img" aria-label="Book">📖</span>
-                    <h1 className="text-2xl font-serif font-bold text-heritage-ink tracking-tight">Story Scribe</h1>
+                    <h1 className="text-2xl font-serif font-bold text-heritage-ink tracking-tight">Wissums</h1>
                 </div>
-                <p className="text-[11px] font-bold text-heritage-warmGold uppercase tracking-[0.2em] ml-8">by Gemynd</p>
+                <p className="text-[11px] font-bold text-heritage-warmGold uppercase tracking-[0.2em] ml-8">by Wissums</p>
             </div>
         </header>
 

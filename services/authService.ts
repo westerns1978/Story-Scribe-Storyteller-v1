@@ -1,6 +1,6 @@
 // services/authService.ts
 // ============================================
-// Supabase Auth for Story Scribe
+// Supabase Auth for Wissums
 // Email/password + magic link support
 // User session persists across browser refreshes
 // ============================================

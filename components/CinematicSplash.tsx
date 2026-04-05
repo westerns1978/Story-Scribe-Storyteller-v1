@@ -100,9 +100,9 @@ export const CinematicSplash: React.FC<CinematicSplashProps> = ({ onComplete }) 
           overflow:'hidden', marginBottom:24,
           background:'radial-gradient(ellipse at 40% 35%, rgba(196,151,59,.12) 0%, rgba(40,15,20,.8) 100%)',
         }}>
-          {/* Connie's AI-generated face from Gemynd CDN */}
+          {/* Connie's AI-generated face from Wissums CDN */}
           <img
-            src="https://storage.googleapis.com/gemynd-public/projects/story-scribe/connie-portrait.jpg"
+            src="https://storage.googleapis.com/gemynd-public/projects/wissums/connie-portrait.jpg"
             style={{ width:'100%', height:'100%', objectFit:'cover' }}
             onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
             alt="Connie"
@@ -139,7 +139,7 @@ export const CinematicSplash: React.FC<CinematicSplashProps> = ({ onComplete }) 
           fontSize:8, fontWeight:900, letterSpacing:'.5em',
           textTransform:'uppercase', color:'rgba(196,151,59,.4)',
           margin:0, fontFamily:'Georgia,serif',
-        }}>Story Scribe</p>
+        }}>Wissums</p>
       </div>
     </div>
   );

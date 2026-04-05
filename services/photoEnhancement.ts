@@ -80,8 +80,8 @@ export const STYLE_INFO: Record<EnhancementStyle, { name: string, icon: string, 
   visionary_blueprint: {
     name: 'Visionary Blueprint',
     icon: '📐',
-    description: 'Technical cyanotype blueprint with Gemynd specs.',
-    prompt: 'Convert the subject into a technical architectural blueprint. The face is rendered using precise white cyanotype lines on a deep blueprint-blue background. Include subtle grid lines, drafting measurements, and "Gemynd Technical Specifications" written in a clean architectural font in the corner.',
+    description: 'Technical cyanotype blueprint with Wissums specs.',
+    prompt: 'Convert the subject into a technical architectural blueprint. The face is rendered using precise white cyanotype lines on a deep blueprint-blue background. Include subtle grid lines, drafting measurements, and "Wissums Technical Specifications" written in a clean architectural font in the corner.',
     color: '#1e3a8a',
     statusMsg: 'Plotting technical specifications and cyanotype lines...'
   },
@@ -95,8 +95,8 @@ export const STYLE_INFO: Record<EnhancementStyle, { name: string, icon: string, 
   }
 };
 
-const SYSTEM_INSTRUCTION = `You are the Archive Artisan, the master of "Ultra-HD Heritage Restoration" for Gemynd. You treat every image not as a file, but as a "Source Memory."
-The Gemynd Aesthetic:
+const SYSTEM_INSTRUCTION = `You are the Archive Artisan, the master of "Ultra-HD Heritage Restoration" for Wissums. You treat every image not as a file, but as a "Source Memory."
+The Wissums Aesthetic:
 Physicality: Results must look like they exist in the physical world (ink, coffee, film, paper).
 Identity: Maintain 100% facial identity. We clarify history; we do not rewrite it.
 Palette: Lean into warm, organic tones—terracotta, cream, sienna, and deep browns.

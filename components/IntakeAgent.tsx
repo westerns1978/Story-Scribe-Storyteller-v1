@@ -75,7 +75,7 @@ function assessIntake(props: IntakeAgentProps): IntakeAssessment {
   if (/born|birth|grew up|childhood|young|early life/i.test(allText)) narrativeDepth += 10;
   if (/married|spouse|husband|wife|partner|family/i.test(allText)) narrativeDepth += 10;
   if (/work|career|job|profession|built|created|founded/i.test(allText)) narrativeDepth += 10;
-  if (/passed|died|death|memorial|funeral|legacy/i.test(allText)) narrativeDepth += 10;
+  if (/passed|died|death|tribute|funeral|legacy/i.test(allText)) narrativeDepth += 10;
   narrativeDepth = Math.min(100, narrativeDepth);
 
   // ── Sensory grounding ──────────────────────────────────────────────────────
@@ -100,7 +100,7 @@ function assessIntake(props: IntakeAgentProps): IntakeAssessment {
   let factualAnchors = 0;
   if (/\b(19|20)\d{2}\b/.test(allText)) factualAnchors += 25; // year mentioned
   if (photoFacts.some(f => /\d{4}|jersey|school|team/.test(f))) factualAnchors += 25;
-  if (importedTexts.length > 0) factualAnchors += 25; // obituary/document
+  if (importedTexts.length > 0) factualAnchors += 25; // celebration/document
   if (/born in|from|grew up in|lived in|moved to/i.test(allText)) factualAnchors += 15;
   if (allText.length > 0 && subject && new RegExp(subject.split(' ')[0], 'i').test(allText)) factualAnchors += 10;
   factualAnchors = Math.min(100, factualAnchors);
@@ -151,7 +151,7 @@ async function fetchConnieSuggestionFromSupabase(
   const { inputTypes, dominantGap, overallScore, readyToCreate } = assessment;
 
   // Build a context-aware system prompt
-  const systemPrompt = `You are Connie — a warm, unhurried, deeply compassionate memory curator for Story Scribe.
+  const systemPrompt = `You are Connie — a warm, unhurried, deeply compassionate memory curator for Wissums.
 Your single purpose right now is to help this family give ${subject}'s story the richness it deserves.
 You speak like a trusted friend who is also an expert at drawing out memories — never clinical, never rushed.
 
@@ -351,7 +351,7 @@ const IntakeAgent: React.FC<IntakeAgentProps & {
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, padding: '18px 20px 14px' }}>
         <div style={{ position: 'relative', flexShrink: 0 }}>
           <img
-            src="https://storage.googleapis.com/westerns1978-digital-assets/Websites/story-scribe/connie-ai.png"
+            src="https://storage.googleapis.com/westerns1978-digital-assets/Websites/wissums/connie-ai.png"
             alt="Connie"
             style={{
               width: 44, height: 44, borderRadius: '50%', objectFit: 'cover',

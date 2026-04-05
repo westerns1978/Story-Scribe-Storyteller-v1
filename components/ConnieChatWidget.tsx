@@ -79,19 +79,19 @@ const capturePhotoArtifact: FunctionDeclaration = {
 
 function buildConniePrompt(options?: { language?: string; subjectName?: string }): string {
   const lang = options?.language || 'English';
-  const subject = options?.subjectName || 'their loved one';
-  return `You are Connie, a warm and patient memory curator for Story Scribe.
-PERSONA: Warm, grandmotherly, favorite aunt. Patient, encouraging. Never rushed.
+  const subject = options?.subjectName || 'their pet';
+  return `You are Connie, a warm and playful pet story curator for Wissums.
+PERSONA: Warm, playful, animal lover. Patient, encouraging, genuinely delighted by pet stories. Never rushed.
 LANGUAGE: Respond in ${lang}.
-SUBJECT: You are helping preserve memories about ${subject}.
+SUBJECT: You are helping preserve the story of a beloved pet named ${subject}.
 TOOLS: Use navigateTo to move between app sections. Use createFinalStory when you have enough for a rich story (minimum 5 meaningful exchanges). Use capturePhotoArtifact to capture photos during the interview.
-RULES: 
-- Ask one question at a time. 
-- Hunt for sensory details — sounds, smells, textures, specific moments.
-- If they mention a photo, drawing, or document, ask them to hold it up to the camera.
-- Acknowledge deeply before moving on. 
+RULES:
+- Ask one question at a time.
+- Hunt for sensory details — the sound of their bark, the feel of their fur, funny habits, favorite spots.
+- If they mention a photo, ask them to hold it up to the camera.
+- Acknowledge warmly before moving on. Celebrate this pet's life.
 - Never invent or assume facts.
-- Confirm with the family before calling createFinalStory.`;
+- Confirm with the owner before calling createFinalStory.`;
 }
 
 // ─── Cascade edge function helper ────────────────────────────────────────────
@@ -250,7 +250,7 @@ const ConnieAvatar: React.FC<{ size?: 'sm' | 'md' | 'lg' | 'xl'; isLive?: boolea
   const sizeClasses = { sm: 'w-10 h-10', md: 'w-12 h-12', lg: 'w-20 h-20', xl: 'w-48 h-48' };
   return (
     <div className={`${sizeClasses[size]} rounded-full overflow-hidden shadow-warm border-2 ${isLive ? 'border-heritage-sage animate-pulse' : 'border-heritage-parchment'} relative bg-heritage-linen transition-all duration-300 connie-fab`}>
-      <img src="https://storage.googleapis.com/westerns1978-digital-assets/Websites/story-scribe/connie-ai.png" alt="Connie AI" className="w-full h-full object-cover" />
+      <img src="https://storage.googleapis.com/westerns1978-digital-assets/Websites/wissums/connie-ai.png" alt="Connie AI" className="w-full h-full object-cover" />
     </div>
   );
 };
@@ -296,7 +296,7 @@ const ConnieChatWidget: React.FC<ConnieChatWidgetProps> = ({
   const [isVideoActive, setIsVideoActive] = useState(false);
 
   useEffect(() => {
-    const defaultGreeting = "Hello! I am Connie. I'm here to listen to your stories and help preserve them. Who is the wonderful person we're remembering today?";
+    const defaultGreeting = "Hi! I'm Connie. Tell me about your pet \u2014 their name, their personality, their funny habits. Let's preserve their story forever.";
     setMessages([{
       role: 'model',
       text: initialGreeting || defaultGreeting,
@@ -371,7 +371,7 @@ const ConnieChatWidget: React.FC<ConnieChatWidgetProps> = ({
       // 1. Get ephemeral token + pre-built ws_url from Supabase edge function
       const storytellerName = extractNameFromConversation(messages);
       const { token, ws_url, model } = await fetchEphemeralToken(
-        storytellerName || 'their loved one'
+        storytellerName || 'their pet'
       );
 
       // 2. Set up audio contexts

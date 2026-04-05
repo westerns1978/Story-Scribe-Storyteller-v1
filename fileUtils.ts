@@ -1,6 +1,6 @@
 // utils/fileUtils.ts
 // ─────────────────────────────────────────────────────────────────────────────
-// File utilities for Story Scribe
+// File utilities for Wissums
 //
 // extractTextFromPdf:
 //   1. Load PDF via pdf.js CDN (no build dependency)

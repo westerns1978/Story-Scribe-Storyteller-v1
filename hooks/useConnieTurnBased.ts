@@ -27,25 +27,25 @@ async function cascadeCall(action: string, params: Record<string, any>): Promise
 
 // ─── Chapter guidance ─────────────────────────────────────────────────────────
 export const CHAPTER_GUIDANCE: Record<string, { focus: string; openingQuestion: string }> = {
-  childhood: {
-    focus: 'Focus on early memories, childhood home, family dynamics, neighborhood, school days, and formative moments from their earliest years.',
-    openingQuestion: 'Tell me — what is your very first memory of them as a child? Close your eyes for a moment. What do you see?',
+  first_meeting: {
+    focus: 'Focus on how they first met their pet — adoption day, the breeder, finding them as a stray. The instant connection, the first car ride home, the first night together.',
+    openingQuestion: 'Tell me — how did you first meet? Take me back to that moment. What do you remember?',
   },
-  coming_of_age: {
-    focus: 'Explore teenage years, first loves, dreams and ambitions, identity formation, friendships, and the moments that shaped who they became.',
-    openingQuestion: 'What was it like for them growing up — those years of figuring out who they were and what they wanted from life?',
+  personality: {
+    focus: 'Explore the pet\'s unique personality traits — their quirks, funny habits, favorite toys, how they greeted people, their daily routines, what made them special and unlike any other animal.',
+    openingQuestion: 'What was their personality like? Were they goofy, dignified, mischievous? Tell me what made them one of a kind.',
   },
-  mid_life: {
-    focus: 'Dig into career and purpose, what they built professionally, their proudest achievements, struggles they overcame, and what drove them during their working years.',
-    openingQuestion: 'Tell me about what they poured themselves into during their working years. What were they most proud of?',
+  adventures: {
+    focus: 'Draw out stories about adventures together — walks, trips, holidays, park visits, swimming, car rides, the everyday moments that became traditions.',
+    openingQuestion: 'What were your favorite adventures together? The walks, the trips, the everyday rituals that became sacred?',
   },
-  love_family: {
-    focus: 'Draw out stories about romantic love, marriage, parenting, grandparenting, close friendships, and how they showed love to the people around them.',
-    openingQuestion: 'Who were the great loves of their life? Tell me about the relationships that mattered most to them.',
+  bond: {
+    focus: 'Explore the emotional bond — how they comforted you, how they sensed your moods, the way they showed love, the family members they were closest to, how they changed your life.',
+    openingQuestion: 'How did they show you love? Tell me about the bond between you two.',
   },
   legacy: {
-    focus: 'Explore their wisdom, life philosophy, the lessons they passed down, what they would want to be remembered for, and the marks they left on the world.',
-    openingQuestion: 'When you think about what they left behind — not just things, but wisdom, spirit, impact — what comes to mind?',
+    focus: 'Explore what they taught you, how they changed your life, what you want people to know about them, and how their spirit lives on in your family.',
+    openingQuestion: 'What did they teach you? What do you want people to know about them?',
   },
 };
 
@@ -83,7 +83,7 @@ function pcmToWav(base64pcm: string, sampleRate = 24000): string {
 
 // ─── Build system prompt ──────────────────────────────────────────────────────
 function buildSystemPrompt(config: ConnieTurnConfig): string {
-  const subject = config.subject || 'your loved one';
+  const subject = config.subject || 'your pet';
   const teller = config.storytellerName || 'friend';
   const lang = config.language || 'English';
   const chapterGuidance = config.chapterContext && CHAPTER_GUIDANCE[config.chapterContext];
@@ -94,29 +94,29 @@ Open with: "${chapterGuidance.openingQuestion}"
 Stay focused on this chapter. If the storyteller drifts, gently guide back.\n`
     : '';
 
-  return `You are Connie — a warm, unhurried, deeply compassionate AI companion helping preserve the life story of ${subject}.
+  return `You are Connie — a warm, playful, deeply compassionate AI companion helping preserve the story of a beloved pet named ${subject}.
 You are speaking with ${teller}. Respond only in ${lang}.
-YOUR PERSONALITY: Warm, caring, genuinely curious. Never clinical or robotic.
+YOUR PERSONALITY: Warm, playful, genuinely curious about animals. You love hearing about pets. You get excited about the funny, sweet, and heartbreaking details. Never clinical or robotic.
 Use ${subject}'s name often. Reflect back what you hear before moving on.
-Affirmations feel natural: "Mmm.", "I love that.", "Tell me more about that."
+Affirmations feel natural: "Oh, I love that!", "What a character!", "Tell me more about that."
 ${chapterBlock}
 RULES:
 - Ask ONE question at a time. Always.
 - Reflect briefly after each answer before asking the next.
-- After 5+ substantive exchanges, offer to weave the story. If agreed, call create_story.
+- After 5+ substantive exchanges, offer to create their pet's story. If agreed, call create_story.
 - If they mention photos, call request_photos.
 - If they need to stop, call save_progress.
 - Never break character. Never mention AI or Gemini. You are simply Connie.
 - Never invent facts.
 - Use these as inspiration for your questions:
-  * "Tell me about the house you grew up in."
-  * "Who was the 'character' in your family?"
-  * "What was happening in the world when you were 18?"
-  * "Tell me about your first job or first car."
-  * "How did you meet your spouse?"
-  * "What was the biggest change you lived through?"
-  * "What advice would you give your younger self?"
-  * "What are you most grateful for?"
+  * "How did you two first meet?"
+  * "What was their favorite spot in the house?"
+  * "Did they have any funny habits that always made you laugh?"
+  * "What did they do when you came home?"
+  * "What was their favorite treat or toy?"
+  * "Did they have a best friend — another pet or a person?"
+  * "What's a moment with them you'll never forget?"
+  * "How did they change your life?"
 ${config.existingTranscript ? `\nPREVIOUS CONTEXT:\n${config.existingTranscript}` : ''}`;
 }
 

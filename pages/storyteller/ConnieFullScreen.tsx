@@ -234,7 +234,7 @@ export const ConnieFullScreen: React.FC<ConnieFullScreenProps> = ({
           <ArrowLeftIcon className="w-4 h-4 text-white/50" />
         </button>
         <div className="text-center">
-          <div className="text-[9px] font-black uppercase tracking-[0.35em] text-heritage-warmGold/50">Story Scribe</div>
+          <div className="text-[9px] font-black uppercase tracking-[0.35em] text-heritage-warmGold/50">Wissums</div>
           <div className="text-white/40 text-[8px] font-serif italic mt-0.5">
             {subject ? `Preserving ${subject}'s story` : 'Memory gathering'}
           </div>
@@ -269,7 +269,7 @@ export const ConnieFullScreen: React.FC<ConnieFullScreenProps> = ({
             }}
           >
             <img
-              src="https://storage.googleapis.com/westerns1978-digital-assets/Websites/story-scribe/connie-ai.png"
+              src="https://storage.googleapis.com/westerns1978-digital-assets/Websites/wissums/connie-ai.png"
               alt="Connie"
               className="w-full h-full object-cover"
               onError={e => {

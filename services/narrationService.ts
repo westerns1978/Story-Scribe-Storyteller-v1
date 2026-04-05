@@ -68,12 +68,24 @@ export async function narrateText(
   }
 }
 
+// ─── Global audio manager — prevents overlapping voices ───
+let _activeStop: (() => void) | null = null;
+let _activeCtx: AudioContext | null = null;
+
+export function stopAllAudio(): void {
+  if (_activeStop) { try { _activeStop(); } catch {} _activeStop = null; }
+  if (_activeCtx) { try { _activeCtx.close(); } catch {} _activeCtx = null; }
+}
+
 // ─── Play an AudioBuffer, returns a stop function ───
 export function playAudioBuffer(
   audioBuffer: AudioBuffer,
   audioContext: AudioContext,
-  options: { onEnded?: () => void; gainValue?: number } = {}
+  options: { onEnded?: () => void; gainValue?: number; skipGlobalTrack?: boolean } = {}
 ): () => void {
+  // Stop any previously playing audio (unless caller manages its own queue)
+  if (!options.skipGlobalTrack) stopAllAudio();
+
   const source = audioContext.createBufferSource();
   source.buffer = audioBuffer;
 
@@ -84,11 +96,22 @@ export function playAudioBuffer(
   gainNode.connect(audioContext.destination);
   source.start(0);
 
+  const stop = () => { try { source.stop(); } catch {} };
+
   if (options.onEnded) source.onended = options.onEnded;
 
-  return () => {
-    try { source.stop(); } catch { /* already stopped */ }
-  };
+  // Track globally so next play call can stop this one
+  if (!options.skipGlobalTrack) {
+    _activeStop = stop;
+    _activeCtx = audioContext;
+    source.onended = () => {
+      _activeStop = null;
+      _activeCtx = null;
+      options.onEnded?.();
+    };
+  }
+
+  return stop;
 }
 
 // ─── Narrate + play in one call (used by CinematicReveal) ───

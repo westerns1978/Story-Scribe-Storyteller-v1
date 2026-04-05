@@ -92,11 +92,19 @@ const IMAGES = [
 const QUOTE_DURATION = 8000; // ms per quote
 const IMAGE_DURATION = 10000; // ms per image
 
+const STAGE_LABELS = [
+  'Reading memories\u2026',
+  'Mapping the timeline\u2026',
+  'Painting the scenes\u2026',
+  'Directing the final cut\u2026',
+];
+
 interface Props {
   storytellerName?: string;
+  progressStage?: number;  // 0-3 matching agent steps
 }
 
-const StoryLoadingCinema: React.FC<Props> = ({ storytellerName }) => {
+const StoryLoadingCinema: React.FC<Props> = ({ storytellerName, progressStage }) => {
   const [quoteIdx, setQuoteIdx] = useState(() => Math.floor(Math.random() * QUOTES.length));
   const [imageIdx, setImageIdx] = useState(() => Math.floor(Math.random() * IMAGES.length));
   const [quoteVisible, setQuoteVisible] = useState(true);
@@ -204,7 +212,7 @@ const StoryLoadingCinema: React.FC<Props> = ({ storytellerName }) => {
         background: 'radial-gradient(ellipse 80% 35% at 50% 115%, rgba(196,151,59,0.12) 0%, transparent 60%)',
       }} />
 
-      {/* Top — Story Scribe wordmark */}
+      {/* Top — Wissums wordmark */}
       <div style={{
         position: 'absolute', top: 36, left: 0, right: 0,
         textAlign: 'center',
@@ -214,7 +222,7 @@ const StoryLoadingCinema: React.FC<Props> = ({ storytellerName }) => {
           fontSize: 9, fontWeight: 900, letterSpacing: '0.5em',
           textTransform: 'uppercase', color: 'rgba(196,151,59,0.45)',
           fontFamily: 'Georgia, "Times New Roman", serif',
-        }}>Story Scribe</span>
+        }}>Wissums</span>
       </div>
 
       {/* Center — Quote */}
@@ -270,39 +278,58 @@ const StoryLoadingCinema: React.FC<Props> = ({ storytellerName }) => {
         }} />
       </div>
 
-      {/* Bottom — Loading status */}
+      {/* Bottom — Loading status with progress */}
       <div style={{
         position: 'absolute', bottom: 52, left: 0, right: 0,
         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
         animation: 'cinema-fade-in 1.5s ease both',
       }}>
-        {/* Animated progress bar */}
+        {/* Progress bar — real stage progress */}
         <div style={{
-          width: 120, height: 1,
+          width: 200, height: 2,
           background: 'rgba(255,255,255,0.08)',
-          borderRadius: 1, overflow: 'hidden', marginBottom: 6,
+          borderRadius: 1, overflow: 'hidden', marginBottom: 4,
         }}>
           <div style={{
             height: '100%',
-            background: 'linear-gradient(to right, transparent, rgba(196,151,59,0.7), transparent)',
-            animation: 'cinema-pulse 1.8s ease-in-out infinite',
-            width: '60%',
-            marginLeft: '20%',
+            background: 'linear-gradient(to right, rgba(196,151,59,0.5), rgba(196,151,59,0.9))',
+            width: progressStage != null ? `${Math.min(100, ((progressStage + 1) / 4) * 100)}%` : '10%',
+            transition: 'width 1.2s ease-in-out',
+            borderRadius: 1,
           }} />
         </div>
+
+        {/* Stage label */}
+        {progressStage != null && (
+          <p style={{
+            fontFamily: '"Helvetica Neue", Arial, sans-serif',
+            fontSize: 10,
+            fontWeight: 700,
+            letterSpacing: '0.3em',
+            textTransform: 'uppercase',
+            color: 'rgba(196,151,59,0.6)',
+            margin: 0,
+            transition: 'opacity 0.5s ease',
+          }}>
+            Step {progressStage + 1} of 4
+          </p>
+        )}
 
         <p style={{
           fontFamily: 'Georgia, "Times New Roman", serif',
           fontStyle: 'italic',
           fontSize: 13,
-          color: 'rgba(245,236,215,0.35)',
+          color: 'rgba(245,236,215,0.45)',
           letterSpacing: '0.08em',
           margin: 0,
           minHeight: 20,
+          transition: 'opacity 0.5s ease',
         }}>
-          {name
-            ? `Preparing ${name}'s story${dots}`
-            : `Preparing your story${dots}`
+          {progressStage != null
+            ? STAGE_LABELS[progressStage] || `Preparing ${name ? name + "'s" : 'your'} story${dots}`
+            : name
+              ? `Preparing ${name}'s story${dots}`
+              : `Preparing your story${dots}`
           }
         </p>
 
@@ -315,7 +342,7 @@ const StoryLoadingCinema: React.FC<Props> = ({ storytellerName }) => {
           color: 'rgba(196,151,59,0.25)',
           margin: 0,
         }}>
-          Preserved by Connie
+          Made with love by Wissums
         </p>
       </div>
     </div>

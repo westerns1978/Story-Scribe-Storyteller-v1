@@ -7,7 +7,7 @@ interface StoryMediaDB extends DBSchema {
   };
 }
 
-const DB_NAME = 'story-scribe-media';
+const DB_NAME = 'wissums-media';
 const STORE_NAME = 'media';
 
 // Initialize DB lazily and safely

@@ -1,6 +1,6 @@
 // components/NetworkScanModal.tsx
 // ============================================
-// Driverless eSCL network scanner for Story Scribe
+// Driverless eSCL network scanner for Wissums
 // Works with any Epson, Ricoh, Fujitsu, Canon, Brother network scanner
 // Routes through FlowHub bridge at localhost:8585 to avoid CORS
 // Feeds directly into existing handleScanComplete pipeline
@@ -20,7 +20,7 @@ interface NetworkScanModalProps {
 
 type ModalState = 'setup' | 'connecting' | 'ready' | 'scanning' | 'done' | 'error';
 
-// ─── Styles (matches Story Scribe aesthetic) ──────────────────────────────────
+// ─── Styles (matches Wissums aesthetic) ──────────────────────────────────
 
 const BG = '#0D0B0A';
 const GOLD = '#C4973B';
@@ -258,7 +258,7 @@ export const NetworkScanModal: React.FC<NetworkScanModalProps> = ({ onScanComple
         }}>
           <div>
             <div style={{ fontSize: 9, fontWeight: 900, letterSpacing: '.4em', textTransform: 'uppercase', color: `rgba(196,151,59,0.5)`, marginBottom: 4, fontFamily: 'system-ui' }}>
-              Story Scribe
+              Wissums
             </div>
             <div style={{ fontFamily: 'Georgia, serif', fontSize: 18, color: CREAM }}>
               Scan from Network Scanner

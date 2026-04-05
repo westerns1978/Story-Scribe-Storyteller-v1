@@ -1,6 +1,6 @@
 // services/storageService.ts
 // ============================================
-// Story Scribe asset storage — Supabase Storage + file_metadata table
+// Wissums asset storage — Supabase Storage + file_metadata table
 // Now user-aware: all uploads tagged with user_id when available
 // getUserAssets() retrieves all files for a signed-in user
 // ============================================

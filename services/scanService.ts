@@ -1,6 +1,6 @@
 // services/scanService.ts
 // ============================================
-// Story Scribe Universal Scan Service v2
+// Wissums Universal Scan Service v2
 // ============================================
 // - Bridge URL auto-detected (localhost first, then last-known LAN IP)
 // - ALL scan paths return PNG (converted at service layer via canvas)

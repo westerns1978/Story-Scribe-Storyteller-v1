@@ -3,12 +3,12 @@ import { motion, AnimatePresence } from "motion/react";
 import ErrorBoundary from './components/ErrorBoundary';
 import { Customer, ActiveStory, StoryArchiveItem, NeuralAsset } from './types';
 import { generateStoryWithMagic } from './services/api';
-import { LandingGate } from './components/LandingGate';
-import { CinematicSplash } from './components/CinematicSplash'; // kept for reference, unused
+import { WissumsLanding } from './components/WissumsLanding';
 import StoryLoadingCinema from './components/StoryLoadingCinema';
 import { usePersistentSession } from './hooks/usePersistentSession';
 import { checkElderlyMode, enableElderlyMode } from './utils/accessibility';
 import { saveStory, getArchivedStories, loadStory as loadStoryFromVault } from './services/archiveService';
+import { createCheckoutSession, verifyPayment, Tier } from './services/stripeService';
 import Loader2Icon from './components/icons/Loader2Icon';
 
 // Storyteller Flow Screens
@@ -17,14 +17,13 @@ import { TributeContributePage } from './pages/storyteller/TributeContributePage
 import GatheringScreen from './pages/storyteller/GatheringScreen';
 import { ConnieFullScreen } from './pages/storyteller/ConnieFullScreen';
 import { YourStoryScreen } from './pages/storyteller/YourStoryScreen';
-import ProgressOverlay from './components/ProgressOverlay';
 import { StoriesShelf } from './pages/storyteller/StoriesShelf';
 
 // Admin Mode (legacy)
 import { StorytellerLayout } from './layouts/StorytellerLayout';
 import ConnieChatWidget from './components/ConnieChatWidget';
 
-type StorytellerPhase = 'welcome' | 'gathering' | 'connie' | 'creating' | 'story' | 'shelf' | 'admin';
+type StorytellerPhase = 'landing' | 'welcome' | 'gathering' | 'connie' | 'creating' | 'story' | 'shelf' | 'admin';
 
 interface GatheredMaterial {
   transcript: string;
@@ -47,12 +46,17 @@ const App: React.FC = () => {
   const [tributeStoryId, setTributeStoryId] = useState<string | null>(null);
   const [tributeSubject, setTributeSubject] = useState<string>('');
 
-  const [phase, setPhase] = useState<StorytellerPhase>('welcome');
+  // ── Stripe / tier state ────────────────────────────────────────────────────
+  const [paidTier, setPaidTier] = useState<Tier | null>(null);
+  const [isCheckingPayment, setIsCheckingPayment] = useState(false);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+
+  const [phase, setPhase] = useState<StorytellerPhase>('landing');
   const [subject, setSubject] = useState('');
   const [language, setLanguage] = useState('en');
   const [narratorVoice, setNarratorVoice] = useState<'Kore' | 'Fenrir'>('Kore');
-  const [petMode, setPetMode] = useState(false);
-  const [persona, setPersona] = useState<'curator' | 'keeper' | 'pet'>('curator');
+  const [petMode, setPetMode] = useState(true); // Always pet mode in Wissums
+  const [persona, setPersona] = useState<'curator' | 'keeper' | 'pet'>('pet');
   const [savedStories, setSavedStories] = useState<{ sessionId: string; storytellerName: string; savedAt: string }[]>([]);
   const [fullSavedStories, setFullSavedStories] = useState<StoryArchiveItem[]>([]);
   const [storiesLoading, setStoriesLoading] = useState(true);
@@ -72,38 +76,71 @@ const App: React.FC = () => {
     const initializeApp = async () => {
       const params = new URLSearchParams(window.location.search);
 
+      // ── PAYMENT RETURN — Stripe redirects back here ────────────────────
+      const paymentStatus = params.get('payment');
+      const stripeSessionId = params.get('session_id');
+      if (paymentStatus === 'success' && stripeSessionId) {
+        window.history.replaceState({}, '', '/');
+        setIsCheckingPayment(true);
+        try {
+          const result = await verifyPayment(stripeSessionId);
+          if (result.paid && result.tier) {
+            setPaidTier(result.tier);
+            if (result.petName) setSubject(result.petName);
+            // Auto-login as guest and go to welcome
+            login({
+              id: `wissums-${Date.now()}`, name: result.petName || 'Pet Parent',
+              email: 'customer@wissums.com', org_id: '71077b47-66e8-4fd9-90e7-709773ea6582', is_admin: false,
+            });
+            setPhase('welcome');
+          } else {
+            console.warn('[Payment] Not verified — showing landing');
+          }
+        } catch (e) {
+          console.error('[Payment] Verification failed:', e);
+        } finally {
+          setIsCheckingPayment(false);
+        }
+      } else if (paymentStatus === 'cancelled') {
+        window.history.replaceState({}, '', '/');
+      }
+
+      // ── Check for stored tier in session ────────────────────────────────
+      try {
+        const storedTier = sessionStorage.getItem('wissums_tier');
+        if (storedTier === 'basic' || storedTier === 'premium') {
+          setPaidTier(storedTier);
+        }
+      } catch {}
+
       // ── TRIBUTE LINK ────────────────────────────────────────────────────
       const tributeId = params.get('tribute');
       const tributeFor = params.get('for');
       if (tributeId) {
         window.history.replaceState({}, '', window.location.pathname);
         setTributeStoryId(tributeId);
-        setTributeSubject(tributeFor ? decodeURIComponent(tributeFor) : 'this person');
+        setTributeSubject(tributeFor ? decodeURIComponent(tributeFor) : 'this pet');
         setIsInitialized(true);
         return;
       }
 
-      const storyId = params.get('story');
+      // ── SHARE LINK — supports /story/:id paths AND legacy ?story= query ──
+      const pathMatch = window.location.pathname.match(/^\/story\/(.+)/);
+      const storyId = pathMatch ? pathMatch[1] : params.get('story');
       if (storyId) {
-        // ── SHARE LINK PATCH ──────────────────────────────────────────────────
-        // Clean the URL immediately so refresh doesn't re-trigger
-        window.history.replaceState({}, '', window.location.pathname);
+        if (!pathMatch) window.history.replaceState({}, '', window.location.pathname);
         setIsLoadingShared(true);
         try {
           const story = await loadStoryFromVault(storyId);
-          if (story) {
-            // Story found — show it directly, no auth needed
-            setSharedStory(story);
-          } else {
-            // Story not found — land on welcome with a soft message
-            console.warn('[Share] Story not found:', storyId);
-          }
+          if (story) setSharedStory(story);
+          else console.warn('[Share] Story not found:', storyId);
         } catch (e) {
           console.error('[Share] Resolution failed', e);
         } finally {
           setIsLoadingShared(false);
         }
       }
+
       // Load saved stories for the shelf
       try {
         setStoriesLoading(true);
@@ -124,15 +161,33 @@ const App: React.FC = () => {
     initializeApp();
   }, []);
 
-  const handleLogin = (c: Customer) => login(c);
-  const handleLogout = () => { logout(); window.location.href = '/'; };
+  // ── Persist tier in session storage ────────────────────────────────────────
+  useEffect(() => {
+    if (paidTier) sessionStorage.setItem('wissums_tier', paidTier);
+  }, [paidTier]);
 
-  const handleBegin = useCallback((name: string, lang: string, voice: 'Kore' | 'Fenrir' = 'Kore', isPet: boolean = false, selectedPersona: 'curator' | 'keeper' | 'pet' = 'curator') => {
+  // ── Stripe checkout handler ────────────────────────────────────────────────
+  const handleSelectTier = useCallback(async (tier: Tier) => {
+    setCheckoutLoading(true);
+    try {
+      const { checkoutUrl } = await createCheckoutSession(tier);
+      window.location.href = checkoutUrl;
+    } catch (err: any) {
+      console.error('[Checkout] Failed:', err);
+      alert('Payment setup failed. Please try again.');
+      setCheckoutLoading(false);
+    }
+  }, []);
+
+  const handleLogin = (c: Customer) => login(c);
+  const handleLogout = () => { logout(); setPaidTier(null); sessionStorage.removeItem('wissums_tier'); window.location.href = '/'; };
+
+  const handleBegin = useCallback((name: string, lang: string, voice: 'Kore' | 'Fenrir' = 'Kore', isPet: boolean = true, selectedPersona: 'curator' | 'keeper' | 'pet' = 'pet') => {
     setSubject(name || '');
     setLanguage(lang || 'en');
     setNarratorVoice(voice);
-    setPetMode(isPet);
-    setPersona(isPet ? 'pet' : selectedPersona);
+    setPetMode(true);
+    setPersona(selectedPersona);
     setMaterial({ transcript: '', artifacts: [], importedTexts: [] });
     setActiveStory(null);
     setPhase('gathering');
@@ -166,7 +221,7 @@ const App: React.FC = () => {
   const handleConnieFinish = useCallback((data: { transcript: string }) => {
     setMaterial(prev => ({ ...prev, transcript: data.transcript }));
     if (!subject) {
-      const nameMatch = data.transcript.match(/(?:about|remember|name is|called)\s+([A-Z][a-z]+ ?[A-Z]?[a-z]*)/);
+      const nameMatch = data.transcript.match(/(?:about|named?|called)\s+([A-Z][a-z]+ ?[A-Z]?[a-z]*)/);
       if (nameMatch) setSubject(nameMatch[1].trim());
     }
     setPhase('gathering');
@@ -205,12 +260,12 @@ const App: React.FC = () => {
       ].filter(Boolean).join('\n\n---\n\n');
 
       if (!allText.trim()) {
-        alert('Please add at least one memory — talk to your companion, upload photos, or add a document.');
+        alert('Please share at least one memory \u2014 talk to Connie, upload photos, or add a description.');
         setPhase('gathering');
         return;
       }
 
-      const storyName = subject.trim() || 'Someone Special';
+      const storyName = subject.trim() || 'Your Pet';
       const artifactData = material.artifacts.map(a => ({
         data: '',
         mimeType: a.file_type || 'image/jpeg',
@@ -240,7 +295,7 @@ const App: React.FC = () => {
           if (step === 'agent_director') setProgressStage(3);
         },
         artifactData, narrativeStyle || 'Cinematic (Non-Linear)', photoGrounding,
-        musicQuery, imagePalette, language, isPet || petMode,
+        musicQuery, imagePalette, language, true, // always pet mode
         verifiedPhotoFacts, uploadedPhotos
       );
 
@@ -259,7 +314,7 @@ const App: React.FC = () => {
           ...(response.artifacts || response.extraction?.artifacts || []),
         ],
         beatAudio: response.beat_audio || [],
-        petMode: isPet || false,
+        petMode: true,
         uploadedPhotos,
       };
 
@@ -277,14 +332,13 @@ const App: React.FC = () => {
       }
 
       setActiveStory(newStory);
-      if (response.extraction?.storyteller?.name) setSubject(response.extraction.storyteller.name);
       setTimeout(() => setPhase('story'), 1500);
     } catch (error: any) {
-      console.error('The Magic Cascade failed:', error);
+      console.error('Story creation failed:', error);
       alert(`Story creation encountered an issue: ${error.message}\n\nPlease try again.`);
       setPhase('gathering');
     }
-  }, [material, subject, petMode, language]);
+  }, [material, subject, language]);
 
   const handleRefineNarrative = useCallback(async (instruction: string) => {
     if (!activeStory) return;
@@ -306,8 +360,8 @@ const App: React.FC = () => {
         storyboard: response.storyboard || prev.storyboard,
       } : prev);
     } catch (err: any) {
-      console.error('[MagicTouch] Refine failed:', err);
-      alert('Magic Touch encountered an issue: ' + err.message);
+      console.error('[Refine] Failed:', err);
+      alert('Story refinement encountered an issue: ' + err.message);
     }
   }, [activeStory]);
 
@@ -335,23 +389,17 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // ── Share handler — used by YourStoryScreen ────────────────────────────────
-  // navigator.share() on mobile, clipboard copy on desktop, prompt as last resort
   const handleShareStory = useCallback(async (story: ActiveStory) => {
-    const STORY_BASE = 'https://gemynd-story-scribe-608887102507.us-west1.run.app';
-    const shareUrl = story.share_url || `${STORY_BASE}?story=${story.sessionId}`;
+    const shareUrl = story.share_url || `${window.location.origin}/story/${story.sessionId}`;
     const shareTitle = `${story.storytellerName}'s Story`;
-    const shareText = `Connie preserved this story — ${shareTitle}`;
+    const shareText = `Check out ${story.storytellerName}'s story on Wissums!`;
 
     if (navigator.share) {
-      try {
-        await navigator.share({ title: shareTitle, text: shareText, url: shareUrl });
-        return;
-      } catch { /* user cancelled or not supported */ }
+      try { await navigator.share({ title: shareTitle, text: shareText, url: shareUrl }); return; }
+      catch { /* user cancelled */ }
     }
     try {
       await navigator.clipboard.writeText(shareUrl);
-      // Return the URL so the caller can show a "Copied!" confirmation
       return shareUrl;
     } catch {
       window.prompt('Copy this link to share:', shareUrl);
@@ -398,13 +446,15 @@ const App: React.FC = () => {
       return params.get('name') || undefined;
     } catch { return undefined; }
   })();
-  // Minimum 5s splash — ensures user sees the cinematic intro before story loads
+
+  // Minimum 5s splash for share links
   const [minSplashDone, setMinSplashDone] = React.useState(false);
   React.useEffect(() => {
     const t = setTimeout(() => setMinSplashDone(true), 5000);
     return () => clearTimeout(t);
   }, []);
-  if (isLoadingShared || !minSplashDone) return <StoryLoadingCinema storytellerName={sharedStory?.storytellerName || pendingName} />;
+  if (isLoadingShared || (!minSplashDone && sharedStory)) return <StoryLoadingCinema storytellerName={sharedStory?.storytellerName || pendingName} />;
+  if (isCheckingPayment) return <LoadingScreen message="Verifying payment..." />;
   if (!isInitialized) return null;
 
   // ── Share link — show story publicly, no auth required ────────────────────
@@ -438,8 +488,22 @@ const App: React.FC = () => {
     );
   }
 
-  if (!isAuthenticated || !user) {
-    return <LandingGate onLogin={handleLogin} />;
+  // ── Landing page — shown before payment ────────────────────────────────────
+  if (!paidTier && phase === 'landing') {
+    return <WissumsLanding onSelectTier={handleSelectTier} isLoading={checkoutLoading} />;
+  }
+
+  // ── If no paid tier and somehow past landing, redirect to landing ──────────
+  if (!paidTier && !isAuthenticated) {
+    return <WissumsLanding onSelectTier={handleSelectTier} isLoading={checkoutLoading} />;
+  }
+
+  // Auto-login as guest if paid but not authenticated
+  if (paidTier && !isAuthenticated) {
+    login({
+      id: `wissums-${Date.now()}`, name: 'Pet Parent',
+      email: 'customer@wissums.com', org_id: '71077b47-66e8-4fd9-90e7-709773ea6582', is_admin: false,
+    });
   }
 
   return (
@@ -466,10 +530,16 @@ const App: React.FC = () => {
               />
             </motion.div>
           )}
+          {phase === 'landing' && paidTier && (
+            <motion.div key="redirect-welcome" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
+              {/* Auto-redirect to welcome once paid */}
+              {(() => { setPhase('welcome'); return null; })()}
+            </motion.div>
+          )}
           {phase === 'gathering' && (
             <motion.div key="gathering" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
               <GatheringScreen
-                subject={subject || 'a loved one'}
+                subject={subject || 'your pet'}
                 material={material}
                 persona={persona}
                 onTalk={() => setPhase('connie')}
@@ -479,14 +549,14 @@ const App: React.FC = () => {
                 onRemoveText={handleRemoveText}
                 onCreate={handleCreateStory}
                 onExit={handleRestart}
-                petMode={petMode}
+                petMode={true}
               />
             </motion.div>
           )}
           {phase === 'connie' && (
             <motion.div key="connie" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
               <ConnieFullScreen
-                subject={subject || 'someone special'}
+                subject={subject || 'your pet'}
                 storytellerName={user?.name || user?.email || undefined}
                 onFinish={handleConnieFinish}
                 onBack={() => setPhase(material.transcript ? 'gathering' : 'welcome')}
@@ -503,7 +573,7 @@ const App: React.FC = () => {
           )}
           {phase === 'creating' && (
             <motion.div key="creating" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
-              <StoryLoadingCinema storytellerName={subject || 'Someone Special'} />
+              <StoryLoadingCinema storytellerName={subject || 'Your Pet'} progressStage={progressStage} />
             </motion.div>
           )}
           {phase === 'story' && activeStory && (
@@ -517,6 +587,7 @@ const App: React.FC = () => {
                 onRefineNarrative={handleRefineNarrative}
                 onShare={() => handleShareStory(activeStory)}
                 autoPlayCinematic={true}
+                paidTier={paidTier}
               />
             </motion.div>
           )}
@@ -535,7 +606,7 @@ const App: React.FC = () => {
           {phase === 'admin' && (
             <motion.div key="admin" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
               <StorytellerLayout
-                onLogout={handleLogout} isAdmin={user.is_admin}
+                onLogout={handleLogout} isAdmin={user?.is_admin || false}
                 activeView={adminActiveView} onViewChange={setAdminActiveView}
                 onOpenConnie={() => setAdminConnieOpen(true)} prefilledData={null}
                 initialStagedArtifacts={[]} activeStory={activeStory} onStoryChange={setActiveStory}

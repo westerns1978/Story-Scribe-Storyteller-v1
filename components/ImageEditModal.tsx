@@ -1,6 +1,6 @@
 // components/ImageEditModal.tsx
 // ============================================
-// Scene-level image editing for Story Scribe
+// Scene-level image editing for Wissums
 // User taps any generated scene → types a correction → one image regenerates
 // Everything else in the story stays untouched
 // Band of Brothers principle: wrong image breaks trust, right image seals it

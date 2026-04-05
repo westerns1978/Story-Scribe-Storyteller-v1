@@ -73,7 +73,7 @@ async function supabaseUpsert(story: StoryArchiveItem): Promise<boolean> {
   }
 }
 
-const DB_NAME = 'StoryScribeVault';
+const DB_NAME = 'WissumsVault';
 const DB_VERSION = 2;
 const STORE_NAME = 'stories';
 

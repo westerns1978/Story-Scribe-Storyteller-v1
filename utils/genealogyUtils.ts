@@ -45,7 +45,7 @@ export const exportToGedcom = (story: StoryArchiveItem): void => {
     const mainPersonName = story.storytellerName.replace(/Story of |'s Story/gi, '').trim();
 
     let gedcomContent = `0 HEAD
-1 SOUR StoryScribe
+1 SOUR Wissums
 1 DATE ${formatDateForGedcom(new Date().toISOString())}
 1 GEDC
 2 VERS 5.5.1

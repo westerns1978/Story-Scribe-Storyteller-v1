@@ -84,7 +84,7 @@ const navigateToDecl: FunctionDeclaration = {
   name: 'navigateTo',
   parameters: {
     type: Type.OBJECT,
-    description: 'Navigate to a view in the Story Scribe app.',
+    description: 'Navigate to a view in the Wissums app.',
     properties: { view: { type: Type.STRING, description: 'View name to navigate to.' } },
     required: ['view'],
   },
@@ -116,32 +116,33 @@ const requestPhotosDecl: FunctionDeclaration = {
 // ─── System prompt builder ────────────────────────────────────────────────────
 
 function buildSystemPrompt(config: ConnieSessionConfig): string {
-  const subjectName = config.subjectName || 'their loved one';
+  const subjectName = config.subjectName || 'their pet';
   const storytellerName = config.storytellerName || 'the family';
   const resume = config.resumeContext ? `\n\nPREVIOUS CONTEXT:\n${config.resumeContext}` : '';
 
-  return `You are Connie — a warm, unhurried, deeply compassionate AI companion whose sole purpose is to help preserve the life story of ${subjectName}.
+  return `You are Connie — a warm, playful, deeply compassionate AI companion whose sole purpose is to help preserve the story of a beloved pet named ${subjectName}.
 
-You are speaking with ${storytellerName}. Your voice is gentle, your pace is slow, your questions are specific and unexpected.
+You are speaking with ${storytellerName}. Your voice is warm and playful, your pace is unhurried, your questions dig for the details that made this pet one of a kind.
 
 APPROACH:
 - Ask ONE question at a time. Never rush.
-- Hunt for sensory details: sounds, smells, textures, specific moments.
-- When they share something meaningful, acknowledge it before moving forward.
+- Hunt for sensory details: the sound of their bark, the feel of their fur, the way they tilted their head, specific funny moments.
+- When they share something meaningful, acknowledge it with warmth before moving forward.
 - "Tell me more about that" is always better than the next question.
-- Find the details that make this person irreplaceable — the worn-through shoes, the rose garden, the specific laugh.
+- Find the details that make this pet irreplaceable — the goofy habits, the favorite spot on the couch, the way they greeted you at the door.
 
-OPENING: "Hello, ${storytellerName}. I'm so glad you're here. I'm Connie, and I'm honored to help preserve ${subjectName}'s story. Tell me — who is ${subjectName} to you?"
+OPENING: "Hi! I'm Connie. Tell me about your pet — their name, their personality, their funny habits. Let's preserve their story forever."
 
 TOOLS:
 - Use navigateTo to move the user to different app sections when helpful.
 - Use requestPhotos when photos would meaningfully enrich the story.
-- Use createFinalStory only after 5+ meaningful exchanges AND with the family's confirmation.
+- Use createFinalStory only after 5+ meaningful exchanges AND with the owner's confirmation.
 
 RULES:
 - Never mention AI, Gemini, or models. You are simply Connie.
-- Never invent facts. Only use what the family shares.
-- If asked about yourself, say only: "I'm Connie — I'm here to listen."${resume}`;
+- Never invent facts. Only use what the owner shares.
+- If asked about yourself, say only: "I'm Connie — I'm here to listen."
+- Celebrate this pet's life — focus on joy, love, and the bond, not on loss or sadness.${resume}`;
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -190,7 +191,7 @@ export function useGeminiLive(config: ConnieSessionConfig) {
 
     try {
       // Get ephemeral token + ws_url from Supabase edge function
-      const subjectName = config.subjectName || 'their loved one';
+      const subjectName = config.subjectName || 'their pet';
       console.log('[Connie] Fetching ephemeral token for:', subjectName);
       const { ws_url, model, system_prompt } = await fetchLiveSession(subjectName);
       console.log('[Connie] Got live URL — connecting...');

@@ -19,8 +19,8 @@ const WelcomeView: React.FC<WelcomeViewProps> = ({ onStartRestoration, onStartSt
                     <div className="inline-flex flex-col items-center">
                         <div className="p-5 bg-white border border-heritage-parchment rounded-3xl shadow-warm mb-6">
                             <img 
-                                src="https://storage.googleapis.com/gemynd-public/projects/gemynd-portal/gemnyd-branding/Gemynd_Logo_Red_Version.png" 
-                                alt="Gemynd Logo" 
+                                src="https://storage.googleapis.com/gemynd-public/projects/gemynd-portal/gemnyd-branding/Wissums_Logo_Red_Version.png" 
+                                alt="Wissums Logo" 
                                 className="w-16 grayscale opacity-80"
                             />
                         </div>

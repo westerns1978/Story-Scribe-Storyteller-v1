@@ -37,7 +37,7 @@ const ArchivePanel: React.FC<ArchivePanelProps> = ({
         );
     }, [stories, searchTerm]);
 
-    if (isLoading) return <div className="p-20 text-center animate-pulse text-gemynd-terracotta font-serif">Syncing with Gemynd Vault...</div>;
+    if (isLoading) return <div className="p-20 text-center animate-pulse text-gemynd-terracotta font-serif">Syncing with Wissums Vault...</div>;
 
     return (
         <div className="h-full flex flex-col space-y-6 lg:space-y-10">

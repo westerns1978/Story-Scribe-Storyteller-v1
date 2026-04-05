@@ -1,6 +1,6 @@
 // components/AuthModal.tsx
 // ============================================
-// Story Scribe sign-in / sign-up modal
+// Wissums sign-in / sign-up modal
 // Matches the leather-bound book aesthetic
 // No form tags — uses onClick/onChange handlers
 // ============================================
@@ -151,7 +151,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             fontSize: 11, letterSpacing: '0.4em',
             color: 'rgba(196,151,59,0.5)', textTransform: 'uppercase',
             fontFamily: 'system-ui', marginBottom: 8,
-          }}>Story Scribe</div>
+          }}>Wissums</div>
           <div style={{
             fontFamily: 'Georgia, serif', fontSize: 22,
             color: 'rgba(245,236,215,0.9)', lineHeight: 1.3,

@@ -4,7 +4,7 @@ import { ConnectivitySettings, HealthCheckResponse } from '../types';
 // UPDATED: Bump version to force reset of local settings to the correct default
 const SETTINGS_KEY = 'memory-scribe-settings-v20-prod'; 
 // Set the PROVEN working backend URL
-export const DEFAULT_BACKEND_URL = 'https://story-scribe-backend-286939318734.us-central1.run.app';
+export const DEFAULT_BACKEND_URL = 'https://wissums-backend-286939318734.us-central1.run.app';
 
 export const getConnectivitySettings = (): ConnectivitySettings => {
     try {

@@ -1,6 +1,6 @@
 // services/api.ts
 // ============================================
-// Story Scribe API Service
+// Wissums API Service
 // - generateStoryWithMagic → Supabase edge function (server-side, no API key exposed)
 // - loadStoryFromVault → Supabase REST (anon key, works for share links)
 // - All other functions → browser-side Gemini (AI Studio preview only)

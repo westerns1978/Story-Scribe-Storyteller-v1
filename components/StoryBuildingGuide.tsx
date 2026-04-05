@@ -1,6 +1,6 @@
 // components/StoryBuildingGuide.tsx
 // ============================================
-// Guided story building prompts for Story Scribe
+// Guided story building prompts for Wissums
 // Surfaces the specific, irreplaceable details that make goosebumps moments possible.
 // Used in GatheringScreen — opens as a slide-up panel when user needs help.
 // Organized by life chapter. Tap a question → appends to the story text area.
@@ -194,7 +194,7 @@ export const StoryBuildingGuide: React.FC<StoryBuildingGuideProps> = ({
               fontSize: 9, fontWeight: 900, letterSpacing: '.4em',
               textTransform: 'uppercase', color: 'rgba(196,151,59,0.5)',
               fontFamily: 'system-ui', marginBottom: 3,
-            }}>Story Scribe</div>
+            }}>Wissums</div>
             <div style={{ fontFamily: 'Georgia, serif', fontSize: 17, color: CREAM }}>
               {activeChapter
                 ? active?.chapter

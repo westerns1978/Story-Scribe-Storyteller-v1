@@ -37,7 +37,7 @@ const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, story, showToa
         printWindow.document.write(`
             <html>
                 <head>
-                    <title>Gemynd Archive Tag</title>
+                    <title>Wissums Archive Tag</title>
                     <style>
                         body { font-family: 'Playfair Display', serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f9f7f2; }
                         .tag { width: 300px; padding: 40px; border: 2px solid #962D2D; border-radius: 20px; text-align: center; background: white; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
@@ -50,7 +50,7 @@ const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, story, showToa
                 </head>
                 <body>
                     <div class="tag">
-                        <img src="https://storage.googleapis.com/gemynd-public/projects/gemynd-portal/gemnyd-branding/Gemynd_Logo_Red_Version.png" class="logo" />
+                        <img src="https://storage.googleapis.com/gemynd-public/projects/gemynd-portal/gemnyd-branding/Wissums_Logo_Red_Version.png" class="logo" />
                         <h1>${storyTitle}</h1>
                         <p>Lexington Archive Node</p>
                         <div class="qr-wrap" id="qr"></div>

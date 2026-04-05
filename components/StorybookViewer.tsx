@@ -366,7 +366,7 @@ const ColophonPage: React.FC<{ name: string }> = ({ name }) => (
       <div className="w-px h-16 bg-heritage-parchment mx-auto" />
       <div className="space-y-1">
         <p className="text-[7px] font-black uppercase tracking-[0.5em] text-heritage-inkMuted/30">Preserved by</p>
-        <p className="font-serif text-heritage-ink/40 text-sm">Story Scribe · Gemynd</p>
+        <p className="font-serif text-heritage-ink/40 text-sm">Wissums · Wissums</p>
       </div>
     </div>
   </div>

@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 
-const SESSION_KEY = 'storyscribe_secure_session';
+const SESSION_KEY = 'wissums_secure_session';
 
 export const usePersistentSession = () => {
     const [user, setUser] = useState(() => {

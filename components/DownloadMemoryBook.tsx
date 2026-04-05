@@ -25,7 +25,7 @@ const TONE_COLORS: Record<string, string> = {
 
 const PW = 1684;
 const PH = 1190;
-const STORY_BASE = (process.env as any).APP_URL || 'https://gemynd-story-scribe-608887102507.us-west1.run.app';
+const STORY_BASE = (process.env as any).APP_URL || 'https://gemynd-wissums-608887102507.us-west1.run.app';
 
 interface Props {
   story: any;
@@ -186,7 +186,7 @@ async function drawCover(ctx: CanvasRenderingContext2D, tc: string, story: any) 
   ctx.fillStyle = 'rgba(255,248,235,0.22)';
   ctx.font = '20px system-ui';
   const now = new Date();
-  ctx.fillText(`Preserved ${now.toLocaleString('default',{month:'long'})} ${now.getFullYear()}  ·  Gemynd Story Scribe`, TX, PH * 0.88);
+  ctx.fillText(`Preserved ${now.toLocaleString('default',{month:'long'})} ${now.getFullYear()}  ·  Wissums Wissums`, TX, PH * 0.88);
 }
 
 // ── TIMELINE SPREAD ───────────────────────────────────────────────────────────
@@ -567,7 +567,7 @@ async function drawBackCover(ctx: CanvasRenderingContext2D, tc: string, story: a
   ctx.fillStyle = 'rgba(255,248,235,0.2)';
   ctx.font = '18px system-ui';
   ctx.fillText('This memory book was crafted by Connie, your AI memory keeper', PW/2, PH - 60);
-  ctx.fillText('Gemynd Story Scribe  ·  storyscribe.app', PW/2, PH - 36);
+  ctx.fillText('Wissums Wissums  ·  storyscribe.app', PW/2, PH - 36);
 }
 
 // ── COMPONENT ─────────────────────────────────────────────────────────────────

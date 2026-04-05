@@ -37,11 +37,14 @@ interface YourStoryScreenProps {
   isSharedView?: boolean;
   autoPlayCinematic?: boolean;
   onRefineNarrative?: (instruction: string) => Promise<void>;
+  paidTier?: 'basic' | 'premium' | null;
+  onShare?: () => void;
 }
 
 export const YourStoryScreen: React.FC<YourStoryScreenProps> = ({
   story, onRestart, narratorVoice = 'Kore', onViewShelf, onBack,
   onReorderBeats, isSharedView = false, autoPlayCinematic = false, onRefineNarrative,
+  paidTier,
 }) => {
   const [viewMode, setViewMode] = useState<'cinematic' | 'details'>(
     isSharedView || autoPlayCinematic ? 'cinematic' : 'details'
@@ -118,8 +121,8 @@ export const YourStoryScreen: React.FC<YourStoryScreenProps> = ({
   }, [story.artifacts]);
 
   const handleShareWithFamily = async () => {
-    const url = `${window.location.origin}?story=${story?.sessionId || 'unknown'}`;
-    const shareData = { title: `${story?.storytellerName}'s Legacy Story`, text: `I preserved ${story?.storytellerName}'s life story with Story Scribe.`, url };
+    const url = `${window.location.origin}/story/${story?.sessionId || 'unknown'}`;
+    const shareData = { title: `${story?.storytellerName}'s Legacy Story`, text: `I preserved ${story?.storytellerName}'s life story with Wissums.`, url };
     try {
       if (navigator.share && navigator.canShare?.(shareData)) { await navigator.share(shareData); showToast('Story shared!', 'success'); }
       else { await navigator.clipboard.writeText(url); setCopyFeedback(true); showToast('Share link copied!', 'success'); setTimeout(() => setCopyFeedback(false), 2500); }
@@ -132,12 +135,14 @@ export const YourStoryScreen: React.FC<YourStoryScreenProps> = ({
   };
 
   const narrateQuote = async (quote: string, index: number) => {
-    if (speakingQuote === index) { setSpeakingQuote(null); return; }
+    const { stopAllAudio, narrateText, playAudioBuffer } = await import('../../services/narrationService');
+    if (speakingQuote === index) { stopAllAudio(); setSpeakingQuote(null); return; }
+    stopAllAudio();
     setSpeakingQuote(index);
     try {
-      const { narrateText, playAudioBuffer } = await import('../../services/narrationService');
       const result = await narrateText(quote.slice(0, 300), narratorVoice || 'Kore');
       if (result) playAudioBuffer(result.audioBuffer, result.audioContext, { onEnded: () => setSpeakingQuote(null) });
+      else setSpeakingQuote(null);
     } catch { setSpeakingQuote(null); }
   };
 
@@ -675,8 +680,21 @@ export const YourStoryScreen: React.FC<YourStoryScreenProps> = ({
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
               <button onClick={() => setIsViewerOpen(true)} className="px-10 py-5 bg-heritage-burgundy text-white font-black rounded-full shadow-2xl flex items-center justify-center gap-4 text-xs uppercase tracking-widest hover:scale-[1.02] active:scale-95 transition-all"><BookOpenIcon className="w-4 h-4" /> Open Storybook</button>
-              <DownloadMemoryBook story={{ ...story, generatedImages: localImages, narrative: editedNarrative || story.narrative } as any} />
-              <GenerateMovieButton story={story} />
+              {paidTier === 'premium' ? (
+                <>
+                  <DownloadMemoryBook story={{ ...story, generatedImages: localImages, narrative: editedNarrative || story.narrative } as any} />
+                  <GenerateMovieButton story={story} />
+                </>
+              ) : (
+                <div className="relative group">
+                  <div className="px-10 py-5 bg-white/5 border border-white/10 text-white/40 font-black rounded-full flex items-center justify-center gap-4 text-xs uppercase tracking-widest cursor-not-allowed">
+                    🔒 PDF + Movie (Premium)
+                  </div>
+                  <div className="absolute -top-12 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-black/90 text-white text-xs px-3 py-2 rounded-lg whitespace-nowrap pointer-events-none">
+                    Upgrade to Memory Book ($49) for PDF + MP4
+                  </div>
+                </div>
+              )}
               <button onClick={handleShareWithFamily} className="px-10 py-5 bg-heritage-cream border border-heritage-ink/10 text-heritage-ink font-black rounded-full shadow-sm flex items-center justify-center gap-4 text-xs uppercase tracking-widest hover:bg-heritage-linen transition-all"><ShareIcon className="w-4 h-4" />{copyFeedback ? 'Link Copied!' : 'Share with Family'}</button>
               {!isSharedView && (
                 <button
@@ -693,7 +711,7 @@ export const YourStoryScreen: React.FC<YourStoryScreenProps> = ({
               {isSharedView ? (
                 <div className="space-y-5 text-center py-4">
                   <div className="w-16 h-px bg-heritage-parchment mx-auto" />
-                  <p className="text-base font-serif italic text-heritage-inkMuted leading-relaxed max-w-xs mx-auto">This story was lovingly preserved with Story Scribe.</p>
+                  <p className="text-base font-serif italic text-heritage-inkMuted leading-relaxed max-w-xs mx-auto">This story was lovingly preserved with Wissums.</p>
                   <a href="/" className="inline-flex items-center gap-3 px-10 py-4 bg-heritage-burgundy text-white text-[10px] font-black uppercase tracking-widest rounded-full hover:bg-heritage-burgundy/90 transition-all shadow-xl">✦ Begin Preserving Your Story</a>
                 </div>
               ) : (

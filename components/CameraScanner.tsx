@@ -1,6 +1,6 @@
 // components/CameraScanner.tsx
 // ============================================
-// Universal Scan Input for Story Scribe
+// Universal Scan Input for Wissums
 // ============================================
 // Three paths to capture a physical item:
 //   1. CAMERA — photograph a document/photo with device camera
@@ -295,7 +295,7 @@ const CameraScanner: React.FC<CameraScannerProps> = ({ onScanComplete, onClose, 
               {/* Connie guidance */}
               <div className="flex gap-3 p-3 bg-amber-600/10 border border-amber-600/20 rounded-2xl">
                 <img
-                  src="https://storage.googleapis.com/westerns1978-digital-assets/Websites/story-scribe/connie-ai.png"
+                  src="https://storage.googleapis.com/westerns1978-digital-assets/Websites/wissums/connie-ai.png"
                   alt="Connie"
                   className="w-8 h-8 rounded-full shrink-0 object-cover"
                 />

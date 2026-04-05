@@ -1,6 +1,6 @@
 // services/esclService.ts
 // ============================================
-// eSCL driverless scanner integration for Story Scribe
+// eSCL driverless scanner integration for Wissums
 // eSCL is HTTP-based, built into every modern Epson, Ricoh, Fujitsu,
 // Canon, Brother network scanner. Zero driver install required.
 //

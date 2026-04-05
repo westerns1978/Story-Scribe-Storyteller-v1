@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx vite:*)",
+      "Bash(node node_modules/vite/bin/vite.js build)",
+      "Bash(npm install:*)",
+      "Bash(firebase deploy:*)",
+      "Bash(npx firebase:*)",
+      "Bash(npm list:*)",
+      "Bash(ls node_modules/.bin/firebase*)",
+      "Bash(where firebase:*)",
+      "Bash(mkdir -p \"C:\\\\Users\\\\dlwes\\\\Documents\\\\WestFlow\\\\wissums\")",
+      "Bash(cp -r \"C:\\\\Users\\\\dlwes\\\\Documents\\\\WestFlow\\\\story-scribe\\\\github\\\\Story-Scribe-Storyteller-v1\" \"C:\\\\Users\\\\dlwes\\\\Documents\\\\WestFlow\\\\wissums\\\\wissums-v1\")"
+    ]
+  }
+}
