@@ -52,7 +52,7 @@ const App: React.FC = () => {
   const [isCheckingPayment, setIsCheckingPayment] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
 
-  const [phase, setPhase] = useState<StorytellerPhase>('landing');
+  const [phase, setPhase] = useState<StorytellerPhase>(window.location.hostname.includes('wissums') ? 'landing' : 'welcome');
   const [subject, setSubject] = useState('');
   const [language, setLanguage] = useState('en');
   const [narratorVoice, setNarratorVoice] = useState<'Kore' | 'Fenrir'>('Kore');

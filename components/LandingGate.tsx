@@ -76,7 +76,7 @@ export const LandingGate: React.FC<LandingGateProps> = ({ onLogin }) => {
 
   const guestLogin = () => onLogin({
     id: `guest-${Date.now()}`, name: 'Guest',
-    email: 'guest@wissums.com', org_id: DEMO_ORG_ID, is_admin: false,
+    email: 'guest@storyscribe.app', org_id: DEMO_ORG_ID, is_admin: false,
   });
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) =>
