@@ -8,10 +8,13 @@
 export const isWissums = typeof window !== 'undefined'
   && window.location.hostname.includes('wissums');
 
+export const WISSUMS_BG = 'https://storage.googleapis.com/gemynd-public/projects/wissums/wissum-background.png';
+export const WISSUMS_PORTRAIT = 'https://storage.googleapis.com/gemynd-public/projects/wissums/sissy.jpg';
+
 export const BRAND = isWissums
-  ? { name: 'Wissums', tagline: 'Preserve your pet\'s story forever.' }
-  : { name: 'Story Scribe', tagline: 'Preserve life stories forever.' };
+  ? { name: 'Wissums', tagline: 'Preserve your pet\'s story forever.', agentName: 'Sissy' }
+  : { name: 'Story Scribe', tagline: 'Preserve life stories forever.', agentName: 'Connie' };
 
 export const CONNIE_PORTRAIT = isWissums
-  ? 'https://storage.googleapis.com/westerns1978-digital-assets/Websites/wissums/connie-ai.png'
+  ? WISSUMS_PORTRAIT
   : 'https://storage.googleapis.com/westerns1978-digital-assets/Websites/story-scribe/connie-ai.png';

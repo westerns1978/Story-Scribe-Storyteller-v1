@@ -42,7 +42,7 @@ const WISSUMS_PERSONAS = [
     title: 'Quick Pet Story',
     badge: 'QUICK',
     tagline: 'A story in minutes.',
-    description: 'Upload a photo or write a few sentences about your pet. Connie crafts a cinematic tribute — images, timeline, music — in under 2 minutes.',
+    description: `Upload a photo or write a few sentences about your pet. ${BRAND.agentName} crafts a cinematic tribute — images, timeline, music — in under 2 minutes.`,
     useCases: ['Dogs & cats', 'Quick tributes', 'Share with family'],
     color: '#C4973B',
     glow: 'rgba(196,151,59,0.15)',
@@ -54,7 +54,7 @@ const WISSUMS_PERSONAS = [
     title: 'Full Pet Story',
     badge: 'FULL',
     tagline: 'Build it chapter by chapter.',
-    description: "Interview with Connie. Add photos, share your favorite memories. Build a complete story of your pet's life that lasts forever.",
+    description: `Interview with ${BRAND.agentName}. Add photos, share your favorite memories. Build a complete story of your pet's life that lasts forever.`,
     useCases: ['Dogs, cats, horses', 'Family pet history', 'Memory book'],
     color: '#8B2E3B',
     glow: 'rgba(139,46,59,0.15)',
@@ -63,10 +63,10 @@ const WISSUMS_PERSONAS = [
   {
     id: 'subject' as Persona,
     icon: '🎙️',
-    title: 'Talk to Connie',
+    title: `Talk to ${BRAND.agentName}`,
     badge: 'VOICE',
     tagline: 'Just talk. She does the rest.',
-    description: "Connie listens, asks playful questions, and quietly builds your pet's story in the background. Perfect for when you just want to share memories.",
+    description: `${BRAND.agentName} listens, asks playful questions, and quietly builds your pet's story in the background. Perfect for when you just want to share memories.`,
     useCases: ['Voice-first', 'Easy sharing', 'All pets'],
     color: '#6B8E7A',
     glow: 'rgba(107,142,122,0.15)',
@@ -82,7 +82,7 @@ const SCRIBE_PERSONAS = [
     title: 'Quick Story',
     badge: 'QUICK',
     tagline: 'A story in minutes.',
-    description: 'Upload a photo or write a few sentences. Connie crafts a cinematic story in under 2 minutes.',
+    description: `Upload a photo or write a few sentences. ${BRAND.agentName} crafts a cinematic story in under 2 minutes.`,
     useCases: ['Family tributes', 'Quick stories', 'Share with family'],
     color: '#C4973B',
     glow: 'rgba(196,151,59,0.15)',
@@ -94,7 +94,7 @@ const SCRIBE_PERSONAS = [
     title: 'Full Biography',
     badge: 'FULL',
     tagline: 'Build it chapter by chapter.',
-    description: 'Interview with Connie. Build a complete life story with chapters, timeline, and memory book.',
+    description: `Interview with ${BRAND.agentName}. Build a complete life story with chapters, timeline, and memory book.`,
     useCases: ['Life stories', 'Family history', 'Memory book'],
     color: '#8B2E3B',
     glow: 'rgba(139,46,59,0.15)',
@@ -103,10 +103,10 @@ const SCRIBE_PERSONAS = [
   {
     id: 'subject' as Persona,
     icon: '🎙️',
-    title: 'Talk to Connie',
+    title: `Talk to ${BRAND.agentName}`,
     badge: 'VOICE',
     tagline: 'Just speak. She does the rest.',
-    description: "Just speak — she'll ask the right questions and build the story.",
+    description: `Just speak — she'll ask the right questions and build the story.`,
     useCases: ['Voice-first', 'Easy sharing', 'All stories'],
     color: '#6B8E7A',
     glow: 'rgba(107,142,122,0.15)',
@@ -414,7 +414,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
           <div style={{ position:'relative', display:'inline-block', marginBottom:16 }}>
             <div style={{ position:'absolute', inset:-24, borderRadius:'50%', background:'radial-gradient(circle, rgba(196,151,59,0.14) 0%, transparent 70%)', animation:'ws-breathe 4s ease-in-out infinite' }} />
             <div style={{ width:96, height:96, borderRadius:'50%', border:'1.5px solid rgba(196,151,59,0.3)', boxShadow:'0 0 48px rgba(196,151,59,0.1), 0 8px 30px rgba(0,0,0,0.6)', overflow:'hidden', position:'relative', background:'rgba(30,12,16,0.9)' }}>
-              <img src={CONNIE_IMG} style={{ width:'100%', height:'100%', objectFit:'cover' }} alt="Connie" />
+              <img src={CONNIE_IMG} style={{ width:'100%', height:'100%', objectFit:'cover' }} alt={BRAND.agentName} />
             </div>
           </div>
           <p style={{ fontFamily:'Georgia,serif', fontStyle:'italic', fontWeight:400, fontSize:'1.25rem', color:'rgba(245,236,215,0.8)', margin:'0 0 4px', letterSpacing:'.02em' }}>Their story deserves</p>

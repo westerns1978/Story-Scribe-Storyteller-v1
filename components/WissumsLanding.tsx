@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { BRAND, WISSUMS_BG, WISSUMS_PORTRAIT } from '../utils/brandUtils';
 
 interface WissumsLandingProps {
   onSelectTier: (tier: 'basic' | 'premium') => void;
@@ -69,15 +70,18 @@ export const WissumsLanding: React.FC<WissumsLandingProps> = ({ onSelectTier, is
 
       {/* Atmospheric background */}
       <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none' }}>
+        <img src={WISSUMS_BG} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.18 }} />
         <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse 110% 50% at 50% 110%, rgba(196,151,59,0.12) 0%, rgba(139,46,59,0.08) 40%, transparent 65%)' }} />
         <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse 85% 85% at 50% 50%, transparent 35%, rgba(4,2,6,0.9) 100%)' }} />
       </div>
 
       <div style={{ position: 'relative', zIndex: 10, maxWidth: 640, margin: '0 auto', padding: '48px 24px 64px' }}>
 
-        {/* Wordmark */}
+        {/* Portrait + Wordmark */}
         <div className="wl-up1" style={{ textAlign: 'center', marginBottom: 48 }}>
-          <div style={{ fontSize: 32, marginBottom: 8 }}>{'\uD83D\uDC3E'}</div>
+          <div style={{ width: 96, height: 96, borderRadius: '50%', margin: '0 auto 16px', overflow: 'hidden', border: '2px solid rgba(196,151,59,0.3)', boxShadow: '0 0 48px rgba(196,151,59,0.1), 0 8px 30px rgba(0,0,0,0.6)' }}>
+            <img src={WISSUMS_PORTRAIT} alt={BRAND.agentName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
             <div style={{ height: 1, width: 32, background: 'rgba(196,151,59,0.25)' }} />
             <span style={{
@@ -106,7 +110,7 @@ export const WissumsLanding: React.FC<WissumsLandingProps> = ({ onSelectTier, is
             color: 'rgba(245,236,215,0.45)', fontSize: '1rem',
             lineHeight: 1.7, margin: '0 0 28px', maxWidth: 460, marginLeft: 'auto', marginRight: 'auto',
           }}>
-            Connie will guide you through a short interview. In minutes,
+            {BRAND.agentName} will guide you through a short interview. In minutes,
             you'll have a beautiful cinematic story to share with family and friends.
           </p>
         </div>
@@ -124,14 +128,14 @@ export const WissumsLanding: React.FC<WissumsLandingProps> = ({ onSelectTier, is
             color: 'rgba(245,236,215,0.6)', fontSize: '0.95rem',
             lineHeight: 1.7, margin: '0 0 12px',
           }}>
-            Hi! I'm Connie. Tell me about your pet &mdash; their name, their personality,
+            Hi! I'm {BRAND.agentName}. Tell me about your pet &mdash; their name, their personality,
             their funny habits. Let's preserve their story forever.
           </p>
           <span style={{
             fontSize: 9, fontWeight: 900, letterSpacing: '0.4em', textTransform: 'uppercase',
             color: 'rgba(196,151,59,0.35)',
           }}>
-            &mdash; Connie, your story guide
+            &mdash; {BRAND.agentName}, your story guide
           </span>
         </div>
 
@@ -208,7 +212,7 @@ export const WissumsLanding: React.FC<WissumsLandingProps> = ({ onSelectTier, is
           <div style={{ display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap' }}>
             {[
               { step: '1', title: 'Choose your plan', desc: 'Basic story or full memory book', icon: '\u2728' },
-              { step: '2', title: 'Talk to Connie', desc: 'Share memories of your pet', icon: '\uD83C\uDF99\uFE0F' },
+              { step: '2', title: `Talk to ${BRAND.agentName}`, desc: 'Share memories of your pet', icon: '\uD83C\uDF99\uFE0F' },
               { step: '3', title: 'Get your story', desc: 'Cinematic tribute in minutes', icon: '\uD83C\uDFAC' },
             ].map(item => (
               <div key={item.step} style={{
