@@ -47,6 +47,8 @@ export const YourStoryScreen: React.FC<YourStoryScreenProps> = ({
   onReorderBeats, isSharedView = false, autoPlayCinematic = false, onRefineNarrative,
   paidTier,
 }) => {
+  useEffect(() => { window.scrollTo(0, 0); }, []);
+
   const [viewMode, setViewMode] = useState<'cinematic' | 'details'>(
     isSharedView || autoPlayCinematic ? 'cinematic' : 'details'
   );
