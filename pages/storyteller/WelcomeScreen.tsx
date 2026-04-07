@@ -31,7 +31,7 @@ const LANGUAGES = [
   { code: 'af', native: 'Afrikaans' },
 ];
 
-const HINTS = ['Buddy…', 'Bella…', 'Max…', 'Luna…', 'Charlie…', 'Daisy…', 'Ellie…'];
+const HINTS = ['Grandma Rose…', 'Uncle Joe…', 'Mom…', 'Dad…', 'Auntie Mae…', 'Grandpa Bill…', 'Nana…'];
 const PET_HINTS = ['Buddy…', 'Bella…', 'Max…', 'Luna…', 'Charlie…', 'Daisy…', 'Ellie…'];
 
 const PERSONAS = [
@@ -380,33 +380,73 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
 
         {/* PERSONA SELECTION or NAME INPUT */}
         {!persona ? (
-          <>
-            <div className="r2" style={{ width:'100%', marginBottom:8, textAlign:'center' }}>
-              <p style={{ fontSize:8, fontWeight:900, letterSpacing:'.44em', textTransform:'uppercase', color:'rgba(196,151,59,0.4)', marginBottom:10 }}>How will you use {BRAND.name}?</p>
-            </div>
-            <div className="r3" style={{ width:'100%', display:'flex', flexDirection:'column', gap:12, marginBottom:32 }}>
-              {PERSONAS.map((p, i) => (
-                <button key={p.id} className="persona-card" onClick={() => handlePersonaSelect(p.id)}
-                  style={{ background:`linear-gradient(135deg, ${p.glow}, rgba(255,255,255,0.02))`, border:`1px solid ${p.border}`, animationDelay:`${0.1+i*0.1}s` }}
-                >
-                  <div style={{ display:'flex', alignItems:'flex-start', gap:16 }}>
-                    <div style={{ width:48, height:48, borderRadius:14, flexShrink:0, background:p.glow, border:`1px solid ${p.border}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:22 }}>{p.icon}</div>
-                    <div style={{ flex:1 }}>
-                      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
-                        <span style={{ fontFamily:'Georgia,serif', fontWeight:700, fontSize:'1rem', color:'rgba(245,236,215,0.9)' }}>{p.title}</span>
-                        <span style={{ fontSize:8, fontWeight:900, letterSpacing:'.3em', textTransform:'uppercase', color:p.color, background:p.glow, border:`1px solid ${p.border}`, padding:'2px 7px', borderRadius:4 }}>{p.badge}</span>
+          isWissums ? (
+            /* ── Wissums: persona picker cards ── */
+            <>
+              <div className="r2" style={{ width:'100%', marginBottom:8, textAlign:'center' }}>
+                <p style={{ fontSize:8, fontWeight:900, letterSpacing:'.44em', textTransform:'uppercase', color:'rgba(196,151,59,0.4)', marginBottom:10 }}>How will you use {BRAND.name}?</p>
+              </div>
+              <div className="r3" style={{ width:'100%', display:'flex', flexDirection:'column', gap:12, marginBottom:32 }}>
+                {PERSONAS.map((p, i) => (
+                  <button key={p.id} className="persona-card" onClick={() => handlePersonaSelect(p.id)}
+                    style={{ background:`linear-gradient(135deg, ${p.glow}, rgba(255,255,255,0.02))`, border:`1px solid ${p.border}`, animationDelay:`${0.1+i*0.1}s` }}
+                  >
+                    <div style={{ display:'flex', alignItems:'flex-start', gap:16 }}>
+                      <div style={{ width:48, height:48, borderRadius:14, flexShrink:0, background:p.glow, border:`1px solid ${p.border}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:22 }}>{p.icon}</div>
+                      <div style={{ flex:1 }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
+                          <span style={{ fontFamily:'Georgia,serif', fontWeight:700, fontSize:'1rem', color:'rgba(245,236,215,0.9)' }}>{p.title}</span>
+                          <span style={{ fontSize:8, fontWeight:900, letterSpacing:'.3em', textTransform:'uppercase', color:p.color, background:p.glow, border:`1px solid ${p.border}`, padding:'2px 7px', borderRadius:4 }}>{p.badge}</span>
+                        </div>
+                        <p style={{ fontSize:12, fontStyle:'italic', fontFamily:'Georgia,serif', color:'rgba(245,236,215,0.5)', margin:'0 0 10px', lineHeight:1.5 }}>{p.description}</p>
+                        <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+                          {p.useCases.map(uc => <span key={uc} style={{ fontSize:9, fontWeight:700, letterSpacing:'.2em', textTransform:'uppercase', color:p.color, opacity:0.7 }}>· {uc}</span>)}
+                        </div>
                       </div>
-                      <p style={{ fontSize:12, fontStyle:'italic', fontFamily:'Georgia,serif', color:'rgba(245,236,215,0.5)', margin:'0 0 10px', lineHeight:1.5 }}>{p.description}</p>
-                      <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-                        {p.useCases.map(uc => <span key={uc} style={{ fontSize:9, fontWeight:700, letterSpacing:'.2em', textTransform:'uppercase', color:p.color, opacity:0.7 }}>· {uc}</span>)}
-                      </div>
+                      <div style={{ color:p.color, opacity:0.5, fontSize:18, flexShrink:0, marginTop:4 }}>→</div>
                     </div>
-                    <div style={{ color:p.color, opacity:0.5, fontSize:18, flexShrink:0, marginTop:4 }}>→</div>
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : (
+            /* ── Story Scribe: simple welcome with Begin button ── */
+            <>
+              <div className="r2" style={{ width:'100%', marginBottom:24, textAlign:'center' }}>
+                <p style={{ fontFamily:'Georgia,serif', fontStyle:'italic', fontSize:'1rem', color:'rgba(245,236,215,0.45)', lineHeight:1.7, margin:'0 0 8px' }}>
+                  Upload a photo, share a memory, or just talk to Connie — she'll craft a cinematic story you can share with family.
+                </p>
+              </div>
+              <div className="r3" style={{ width:'100%', display:'flex', flexDirection:'column', gap:12, marginBottom:32 }}>
+                <button className="persona-card" onClick={() => setPersona('curator')}
+                  style={{ background:'linear-gradient(135deg, rgba(139,46,59,0.15), rgba(255,255,255,0.02))', border:'1px solid rgba(139,46,59,0.35)' }}
+                >
+                  <div style={{ display:'flex', alignItems:'center', gap:16 }}>
+                    <div style={{ width:48, height:48, borderRadius:14, flexShrink:0, background:'rgba(139,46,59,0.15)', border:'1px solid rgba(139,46,59,0.35)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:22 }}>✨</div>
+                    <div style={{ flex:1 }}>
+                      <span style={{ fontFamily:'Georgia,serif', fontWeight:700, fontSize:'1rem', color:'rgba(245,236,215,0.9)' }}>Begin Preserving a Story</span>
+                      <p style={{ fontSize:12, fontStyle:'italic', fontFamily:'Georgia,serif', color:'rgba(245,236,215,0.5)', margin:'4px 0 0', lineHeight:1.5 }}>Add photos, documents, or memories — Connie weaves them into a cinematic tribute.</p>
+                    </div>
+                    <div style={{ color:'rgba(139,46,59,0.5)', fontSize:18, flexShrink:0 }}>→</div>
                   </div>
                 </button>
-              ))}
-            </div>
-          </>
+                {onTalkToConnie && (
+                  <button className="persona-card" onClick={() => onTalkToConnie()}
+                    style={{ background:'linear-gradient(135deg, rgba(107,142,122,0.15), rgba(255,255,255,0.02))', border:'1px solid rgba(107,142,122,0.3)' }}
+                  >
+                    <div style={{ display:'flex', alignItems:'center', gap:16 }}>
+                      <div style={{ width:48, height:48, borderRadius:14, flexShrink:0, background:'rgba(107,142,122,0.15)', border:'1px solid rgba(107,142,122,0.3)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:22 }}>🎙️</div>
+                      <div style={{ flex:1 }}>
+                        <span style={{ fontFamily:'Georgia,serif', fontWeight:700, fontSize:'1rem', color:'rgba(245,236,215,0.9)' }}>Talk to Connie</span>
+                        <p style={{ fontSize:12, fontStyle:'italic', fontFamily:'Georgia,serif', color:'rgba(245,236,215,0.5)', margin:'4px 0 0', lineHeight:1.5 }}>Just speak — she'll ask the right questions and build the story.</p>
+                      </div>
+                      <div style={{ color:'rgba(107,142,122,0.5)', fontSize:18, flexShrink:0 }}>→</div>
+                    </div>
+                  </button>
+                )}
+              </div>
+            </>
+          )
         ) : (
           <>
             <div className="r2" style={{ width:'100%', marginBottom:20 }}>
@@ -433,7 +473,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
 
             <div className="r3" style={{ width:'100%', marginBottom:6 }}>
               <p style={{ fontFamily:'Georgia,serif', fontStyle:'italic', fontSize:'1rem', fontWeight:400, color:'rgba(245,236,215,0.38)', textAlign:'center', margin:'0 0 14px' }}>{persona === 'pet' ? 'Who are we honoring?' : 'Whose story are we preserving?'}</p>
-              <input className="ws-input" type="text" value={name} autoFocus onChange={e => setName(e.target.value)} onKeyDown={e => e.key==='Enter' && handleGo()} placeholder={hintFade ? (persona === 'pet' ? PET_HINTS[hintIdx % PET_HINTS.length] : HINTS[hintIdx]) : ''} />
+              <input className="ws-input" type="text" value={name} autoFocus onChange={e => setName(e.target.value)} onKeyDown={e => e.key==='Enter' && handleGo()} placeholder={hintFade ? (isWissums ? PET_HINTS[hintIdx % PET_HINTS.length] : HINTS[hintIdx]) : ''} />
             </div>
 
             <div className="r4" style={{ width:'100%', marginBottom:22 }}>
