@@ -49,7 +49,7 @@ export async function createCheckoutSession(
 
   const data = await res.json();
   return {
-    checkoutUrl: data.checkout_url,
+    checkoutUrl: data.url || data.checkout_url,
     sessionId: data.session_id,
   };
 }
