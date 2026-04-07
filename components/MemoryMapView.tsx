@@ -66,6 +66,24 @@ function buildMapUrl(pins: LocationPin[], selectedIndex: number | null): string 
   return `https://maps.google.com/maps?q=${avgLat},${avgLng}&z=5&output=embed&hl=en&${markerParams}`;
 }
 
+function pinColorForType(type: string): string {
+  const t = (type || '').toLowerCase();
+  if (t.includes('birth')) return 'rgba(196,151,59,0.9)';    // gold
+  if (t.includes('residence') || t.includes('home')) return 'rgba(96,165,250,0.9)';  // blue
+  if (t.includes('funeral') || t.includes('burial') || t.includes('cemetery')) return 'rgba(139,46,59,0.9)'; // dark red
+  if (t.includes('work') || t.includes('career')) return 'rgba(107,142,122,0.9)'; // sage
+  return 'rgba(255,255,255,0.5)'; // gray
+}
+
+function pinBgForType(type: string): string {
+  const t = (type || '').toLowerCase();
+  if (t.includes('birth')) return 'rgba(196,151,59,0.25)';
+  if (t.includes('residence') || t.includes('home')) return 'rgba(96,165,250,0.2)';
+  if (t.includes('funeral') || t.includes('burial') || t.includes('cemetery')) return 'rgba(139,46,59,0.2)';
+  if (t.includes('work') || t.includes('career')) return 'rgba(107,142,122,0.2)';
+  return 'rgba(255,255,255,0.08)';
+}
+
 const MemoryMapView: React.FC<{ story: ActiveStory | null }> = ({ story }) => {
   const [pins, setPins] = useState<LocationPin[]>([]);
   const [selectedPin, setSelectedPin] = useState<number | null>(null);
@@ -220,20 +238,21 @@ const MemoryMapView: React.FC<{ story: ActiveStory | null }> = ({ story }) => {
                   className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
                   style={{
                     background: selectedPin === i
-                      ? 'rgba(196,151,59,0.25)'
-                      : 'rgba(139,46,59,0.2)',
+                      ? pinBgForType(pin.type)
+                      : pinBgForType(pin.type),
                   }}
                 >
                   {pin.loading ? (
                     <div className="w-3 h-3 border border-white/20 border-t-white/60 rounded-full animate-spin" />
                   ) : (
                     <MapPinIcon className="w-4 h-4"
-                      style={{ color: selectedPin === i ? 'rgba(196,151,59,0.9)' : 'rgba(139,46,59,0.8)' }} />
+                      style={{ color: pinColorForType(pin.type) }} />
                   )}
                 </div>
                 <div className="min-w-0">
                   <p className="text-white/80 font-serif text-sm font-semibold truncate">{pin.name}</p>
-                  <p className="text-white/30 text-[9px] font-black uppercase tracking-widest mt-0.5">{pin.type}</p>
+                  <p className="text-[9px] font-black uppercase tracking-widest mt-0.5"
+                    style={{ color: pinColorForType(pin.type) }}>{pin.type || 'Location'}</p>
                 </div>
                 {pin.lat !== null && (
                   <div className="ml-auto flex-shrink-0 text-white/20 text-xs">

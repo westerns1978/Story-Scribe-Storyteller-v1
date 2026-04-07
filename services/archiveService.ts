@@ -140,19 +140,25 @@ export async function getArchivedStories(retryDelayMs = 0): Promise<StoryArchive
       .limit(50);
 
     if (!error && data && data.length > 0) {
-      return data.map((row: any) => ({
-        id: row.session_id,
-        sessionId: row.session_id,
-        name: row.storyteller_name || '',
-        storytellerName: row.storyteller_name || '',
-        narrative: row.narrative || '',
-        extraction: row.extraction,
-        storyboard: row.storyboard,
-        generatedImages: row.assets?.images || [],
-        artifacts: row.extraction?.artifacts || [],
-        background_music_url: row.background_music_url,
-        savedAt: row.saved_at || row.created_at,
-      } as StoryArchiveItem));
+      return data.map((row: any) => {
+        let ext = row.extraction;
+        if (typeof ext === 'string') { try { ext = JSON.parse(ext); } catch {} }
+        let sb = row.storyboard;
+        if (typeof sb === 'string') { try { sb = JSON.parse(sb); } catch {} }
+        return {
+          id: row.session_id,
+          sessionId: row.session_id,
+          name: row.storyteller_name || '',
+          storytellerName: row.storyteller_name || '',
+          narrative: row.narrative || '',
+          extraction: ext,
+          storyboard: sb,
+          generatedImages: row.assets?.images || [],
+          artifacts: ext?.artifacts || [],
+          background_music_url: row.background_music_url,
+          savedAt: row.saved_at || row.created_at,
+        } as StoryArchiveItem;
+      });
     }
   } catch (e) {
     console.warn('[archiveService] Supabase list failed, using IndexedDB:', e);
@@ -204,8 +210,11 @@ export async function loadStory(sessionId: string): Promise<StoryArchiveItem | n
       .single();
 
     if (!error && data) {
-      // Map storyboard beats to include image_index if missing
-      const storyboard = data.storyboard;
+      // Safety parse — extraction/storyboard may arrive as JSON strings from some edge paths
+      let extraction = data.extraction;
+      if (typeof extraction === 'string') { try { extraction = JSON.parse(extraction); } catch {} }
+      let storyboard = data.storyboard;
+      if (typeof storyboard === 'string') { try { storyboard = JSON.parse(storyboard); } catch {} }
       if (storyboard?.story_beats) {
         storyboard.story_beats = storyboard.story_beats.map((beat: any, i: number) => ({
           ...beat,
@@ -219,7 +228,7 @@ export async function loadStory(sessionId: string): Promise<StoryArchiveItem | n
         name: data.storyteller_name || '',
         storytellerName: data.storyteller_name || '',
         narrative: data.narrative || '',
-        extraction: data.extraction,
+        extraction,
         storyboard,
         generatedImages: data.assets?.images || [],
         beatAudio: data.assets?.audio || [],

@@ -5,6 +5,7 @@ interface TimelineEvent {
   event: string;
   significance?: string;
   historical_context?: string;
+  evocative_narration?: string;
 }
 
 interface GeneratedImage {
@@ -89,6 +90,12 @@ const TimelineVisualizer: React.FC<TimelineVisualizerProps> = ({ timeline, image
                     >
                       {item.event}
                     </p>
+                    {/* Historical context — always visible */}
+                    {item.historical_context && (
+                      <p className="text-[11px] leading-relaxed mt-1.5" style={{ color: '#8A7E6D', fontStyle: 'italic' }}>
+                        <span style={{ marginRight: 4 }}>🌍</span>{item.historical_context}
+                      </p>
+                    )}
                   </div>
                   <span
                     className="text-[10px] transition-transform duration-200 mt-1 flex-shrink-0"
@@ -114,6 +121,33 @@ const TimelineVisualizer: React.FC<TimelineVisualizerProps> = ({ timeline, image
                         />
                       </div>
                     )}
+                    {/* Evocative narration */}
+                    {item.evocative_narration && (
+                      <div
+                        className="rounded-xl p-4"
+                        style={{ background: 'rgba(44,36,24,0.04)', border: '1px solid rgba(44,36,24,0.1)' }}
+                      >
+                        <div className="flex items-start gap-3">
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              try {
+                                const { narrateAndPlay } = await import('../services/narrationService');
+                                narrateAndPlay(item.evocative_narration!.slice(0, 400));
+                              } catch {}
+                            }}
+                            className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center mt-0.5"
+                            style={{ background: 'rgba(139,46,59,0.1)', border: '1px solid rgba(139,46,59,0.2)' }}
+                            title="Listen to narration"
+                          >
+                            <span style={{ fontSize: 12, color: '#8B2E3B' }}>🔊</span>
+                          </button>
+                          <p className="text-xs font-serif italic leading-relaxed" style={{ color: '#5C4F3D' }}>
+                            "{item.evocative_narration}"
+                          </p>
+                        </div>
+                      </div>
+                    )}
                     {item.significance && (
                       <div
                         className="rounded-xl p-4"
@@ -124,19 +158,6 @@ const TimelineVisualizer: React.FC<TimelineVisualizerProps> = ({ timeline, image
                         </p>
                         <p className="text-xs font-serif italic leading-relaxed" style={{ color: '#5C4F3D' }}>
                           {item.significance}
-                        </p>
-                      </div>
-                    )}
-                    {item.historical_context && (
-                      <div
-                        className="rounded-xl p-4"
-                        style={{ background: 'rgba(196,151,59,0.05)', border: '1px solid rgba(196,151,59,0.15)' }}
-                      >
-                        <p className="text-[10px] font-black uppercase tracking-widest mb-1" style={{ color: '#C4973B' }}>
-                          Historical Context
-                        </p>
-                        <p className="text-xs leading-relaxed" style={{ color: '#8A7E6D' }}>
-                          {item.historical_context}
                         </p>
                       </div>
                     )}

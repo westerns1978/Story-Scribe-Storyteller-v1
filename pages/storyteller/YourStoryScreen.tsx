@@ -316,6 +316,16 @@ export const YourStoryScreen: React.FC<YourStoryScreenProps> = ({
               </div>
             </div>
 
+            {/* ── Opening Line — cinematic hero quote ──────────────────── */}
+            {story.extraction?.opening_line && (
+              <section className="text-center px-4 py-6">
+                <p className="font-serif italic text-xl lg:text-2xl leading-relaxed text-heritage-ink/80 max-w-2xl mx-auto">
+                  "{story.extraction.opening_line}"
+                </p>
+                <div className="w-16 h-px bg-heritage-warmGold/30 mx-auto mt-5" />
+              </section>
+            )}
+
             {/* ── Uploaded source materials ──────────────────────────────── */}
             {(realAssets.length > 0 || (story.artifacts || []).some((a: any) => a.extracted_text || a.title)) && (
               <section style={{ background: 'rgba(8,6,4,0.96)', borderRadius: '1.5rem', padding: '24px', border: '1px solid rgba(196,151,59,0.15)' }}>
@@ -617,6 +627,11 @@ export const YourStoryScreen: React.FC<YourStoryScreenProps> = ({
                       <div className="flex-1 min-w-0">
                         <p className="font-display font-black text-heritage-ink text-sm leading-snug">{event.event}</p>
                         {event.significance && <p className="text-heritage-inkMuted font-serif italic text-xs mt-1 leading-relaxed">"{event.significance}"</p>}
+                        {event.historical_context && (
+                          <p className="text-heritage-inkMuted/60 text-[11px] mt-1.5 leading-relaxed" style={{ fontStyle: 'italic' }}>
+                            <span style={{ marginRight: 4 }}>🌍</span>{event.historical_context}
+                          </p>
+                        )}
                       </div>
                       <button
                         onClick={() => { setTimeCapsuleYear(event.year); setTimeCapsuleLocation(story.extraction?.locations?.[0]?.name); }}
@@ -678,6 +693,16 @@ export const YourStoryScreen: React.FC<YourStoryScreenProps> = ({
                     </motion.div>
                   ))}
                 </motion.div>
+              </section>
+            )}
+
+            {/* ── Closing Line — cinematic ending quote ─────────────────── */}
+            {story.extraction?.closing_line && (
+              <section className="text-center px-4 py-6">
+                <div className="w-16 h-px bg-heritage-warmGold/30 mx-auto mb-5" />
+                <p className="font-serif italic text-xl lg:text-2xl leading-relaxed text-heritage-ink/80 max-w-2xl mx-auto">
+                  "{story.extraction.closing_line}"
+                </p>
               </section>
             )}
 
@@ -746,6 +771,47 @@ export const YourStoryScreen: React.FC<YourStoryScreenProps> = ({
                 <div className="w-8 h-0.5 bg-heritage-burgundy/20 mx-auto mt-2" />
                 <p className="text-[9px] font-black uppercase tracking-widest text-heritage-inkMuted/40 mt-2">AI-extracted themes, tone, and characters</p>
               </div>
+              {/* ── Core Themes ──────────────────────────────────────── */}
+              {story.extraction?.themes && (story.extraction.themes as string[]).length > 0 && (
+                <div className="bg-heritage-linen border border-heritage-parchment rounded-[2rem] overflow-hidden shadow-sm mb-4 p-6">
+                  <h4 className="text-[9px] font-black uppercase tracking-widest text-heritage-warmGold/60 mb-4">Core Themes</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {(story.extraction.themes as string[]).map((theme: string, i: number) => (
+                      <span key={i} className="px-4 py-2 rounded-full text-xs font-semibold"
+                        style={{ background: 'rgba(196,151,59,0.1)', border: '1px solid rgba(196,151,59,0.25)', color: '#C4973B' }}>
+                        {theme}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ── Emotional Journey ────────────────────────────────── */}
+              {story.extraction?.emotional_journey && (
+                <div className="bg-heritage-linen border border-heritage-parchment rounded-[2rem] overflow-hidden shadow-sm mb-4 p-6 space-y-4">
+                  <h4 className="text-[9px] font-black uppercase tracking-widest text-heritage-warmGold/60">Emotional Journey</h4>
+                  {story.extraction.emotional_journey.overall_tone && (
+                    <span className="inline-block px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest"
+                      style={{ background: 'rgba(139,46,59,0.1)', border: '1px solid rgba(139,46,59,0.2)', color: '#8B2E3B' }}>
+                      {story.extraction.emotional_journey.overall_tone}
+                    </span>
+                  )}
+                  {story.extraction.emotional_journey.arc && (
+                    <p className="text-sm font-serif italic leading-relaxed text-heritage-ink/70">
+                      {story.extraction.emotional_journey.arc}
+                    </p>
+                  )}
+                  {story.extraction.emotional_journey.pivot_moment && (
+                    <div className="rounded-xl p-4" style={{ background: 'rgba(196,151,59,0.06)', border: '1px solid rgba(196,151,59,0.15)' }}>
+                      <p className="text-[9px] font-black uppercase tracking-widest mb-2" style={{ color: '#C4973B' }}>Pivot Moment</p>
+                      <p className="text-sm font-serif italic leading-relaxed text-heritage-ink/70">
+                        {story.extraction.emotional_journey.pivot_moment}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {story.extraction && (
                 <div className="bg-heritage-linen border border-heritage-parchment rounded-[2rem] overflow-hidden shadow-sm mb-4 p-6">
                   <InspirationPanel extraction={story.extraction as any} />
