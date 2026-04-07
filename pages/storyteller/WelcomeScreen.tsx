@@ -34,7 +34,8 @@ const LANGUAGES = [
 const HINTS = ['Grandma Rose…', 'Uncle Joe…', 'Mom…', 'Dad…', 'Auntie Mae…', 'Grandpa Bill…', 'Nana…'];
 const PET_HINTS = ['Buddy…', 'Bella…', 'Max…', 'Luna…', 'Charlie…', 'Daisy…', 'Ellie…'];
 
-const PERSONAS = [
+// Wissums persona cards
+const WISSUMS_PERSONAS = [
   {
     id: 'pet' as Persona,
     icon: '🐾',
@@ -72,6 +73,48 @@ const PERSONAS = [
     border: 'rgba(107,142,122,0.3)',
   },
 ];
+
+// Story Scribe persona cards
+const SCRIBE_PERSONAS = [
+  {
+    id: 'curator' as Persona,
+    icon: '✨',
+    title: 'Quick Story',
+    badge: 'QUICK',
+    tagline: 'A story in minutes.',
+    description: 'Upload a photo or write a few sentences. Connie crafts a cinematic story in under 2 minutes.',
+    useCases: ['Family tributes', 'Quick stories', 'Share with family'],
+    color: '#C4973B',
+    glow: 'rgba(196,151,59,0.15)',
+    border: 'rgba(196,151,59,0.3)',
+  },
+  {
+    id: 'keeper' as Persona,
+    icon: '📖',
+    title: 'Full Biography',
+    badge: 'FULL',
+    tagline: 'Build it chapter by chapter.',
+    description: 'Interview with Connie. Build a complete life story with chapters, timeline, and memory book.',
+    useCases: ['Life stories', 'Family history', 'Memory book'],
+    color: '#8B2E3B',
+    glow: 'rgba(139,46,59,0.15)',
+    border: 'rgba(139,46,59,0.35)',
+  },
+  {
+    id: 'subject' as Persona,
+    icon: '🎙️',
+    title: 'Talk to Connie',
+    badge: 'VOICE',
+    tagline: 'Just speak. She does the rest.',
+    description: "Just speak — she'll ask the right questions and build the story.",
+    useCases: ['Voice-first', 'Easy sharing', 'All stories'],
+    color: '#6B8E7A',
+    glow: 'rgba(107,142,122,0.15)',
+    border: 'rgba(107,142,122,0.3)',
+  },
+];
+
+const PERSONAS = isWissums ? WISSUMS_PERSONAS : SCRIBE_PERSONAS;
 
 // ── Field Guide Modal ─────────────────────────────────────────────────────────
 const FieldGuideModal: React.FC<{ onClose: () => void }> = ({ onClose }) => (
@@ -410,40 +453,32 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
               </div>
             </>
           ) : (
-            /* ── Story Scribe: simple welcome with Begin button ── */
+            /* ── Story Scribe: three cards (Quick Story, Full Biography, Talk to Connie) ── */
             <>
-              <div className="r2" style={{ width:'100%', marginBottom:24, textAlign:'center' }}>
-                <p style={{ fontFamily:'Georgia,serif', fontStyle:'italic', fontSize:'1rem', color:'rgba(245,236,215,0.45)', lineHeight:1.7, margin:'0 0 8px' }}>
-                  Upload a photo, share a memory, or just talk to Connie — she'll craft a cinematic story you can share with family.
-                </p>
+              <div className="r2" style={{ width:'100%', marginBottom:8, textAlign:'center' }}>
+                <p style={{ fontSize:8, fontWeight:900, letterSpacing:'.44em', textTransform:'uppercase', color:'rgba(196,151,59,0.4)', marginBottom:10 }}>How would you like to begin?</p>
               </div>
               <div className="r3" style={{ width:'100%', display:'flex', flexDirection:'column', gap:12, marginBottom:32 }}>
-                <button className="persona-card" onClick={() => setPersona('curator')}
-                  style={{ background:'linear-gradient(135deg, rgba(139,46,59,0.15), rgba(255,255,255,0.02))', border:'1px solid rgba(139,46,59,0.35)' }}
-                >
-                  <div style={{ display:'flex', alignItems:'center', gap:16 }}>
-                    <div style={{ width:48, height:48, borderRadius:14, flexShrink:0, background:'rgba(139,46,59,0.15)', border:'1px solid rgba(139,46,59,0.35)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:22 }}>✨</div>
-                    <div style={{ flex:1 }}>
-                      <span style={{ fontFamily:'Georgia,serif', fontWeight:700, fontSize:'1rem', color:'rgba(245,236,215,0.9)' }}>Begin Preserving a Story</span>
-                      <p style={{ fontSize:12, fontStyle:'italic', fontFamily:'Georgia,serif', color:'rgba(245,236,215,0.5)', margin:'4px 0 0', lineHeight:1.5 }}>Add photos, documents, or memories — Connie weaves them into a cinematic tribute.</p>
-                    </div>
-                    <div style={{ color:'rgba(139,46,59,0.5)', fontSize:18, flexShrink:0 }}>→</div>
-                  </div>
-                </button>
-                {onTalkToConnie && (
-                  <button className="persona-card" onClick={() => onTalkToConnie()}
-                    style={{ background:'linear-gradient(135deg, rgba(107,142,122,0.15), rgba(255,255,255,0.02))', border:'1px solid rgba(107,142,122,0.3)' }}
+                {PERSONAS.map((p, i) => (
+                  <button key={p.id} className="persona-card" onClick={() => handlePersonaSelect(p.id)}
+                    style={{ background:`linear-gradient(135deg, ${p.glow}, rgba(255,255,255,0.02))`, border:`1px solid ${p.border}`, animationDelay:`${0.1+i*0.1}s` }}
                   >
-                    <div style={{ display:'flex', alignItems:'center', gap:16 }}>
-                      <div style={{ width:48, height:48, borderRadius:14, flexShrink:0, background:'rgba(107,142,122,0.15)', border:'1px solid rgba(107,142,122,0.3)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:22 }}>🎙️</div>
+                    <div style={{ display:'flex', alignItems:'flex-start', gap:16 }}>
+                      <div style={{ width:48, height:48, borderRadius:14, flexShrink:0, background:p.glow, border:`1px solid ${p.border}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:22 }}>{p.icon}</div>
                       <div style={{ flex:1 }}>
-                        <span style={{ fontFamily:'Georgia,serif', fontWeight:700, fontSize:'1rem', color:'rgba(245,236,215,0.9)' }}>Talk to Connie</span>
-                        <p style={{ fontSize:12, fontStyle:'italic', fontFamily:'Georgia,serif', color:'rgba(245,236,215,0.5)', margin:'4px 0 0', lineHeight:1.5 }}>Just speak — she'll ask the right questions and build the story.</p>
+                        <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
+                          <span style={{ fontFamily:'Georgia,serif', fontWeight:700, fontSize:'1rem', color:'rgba(245,236,215,0.9)' }}>{p.title}</span>
+                          <span style={{ fontSize:8, fontWeight:900, letterSpacing:'.3em', textTransform:'uppercase', color:p.color, background:p.glow, border:`1px solid ${p.border}`, padding:'2px 7px', borderRadius:4 }}>{p.badge}</span>
+                        </div>
+                        <p style={{ fontSize:12, fontStyle:'italic', fontFamily:'Georgia,serif', color:'rgba(245,236,215,0.5)', margin:'0 0 10px', lineHeight:1.5 }}>{p.description}</p>
+                        <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+                          {p.useCases.map(uc => <span key={uc} style={{ fontSize:9, fontWeight:700, letterSpacing:'.2em', textTransform:'uppercase', color:p.color, opacity:0.7 }}>· {uc}</span>)}
+                        </div>
                       </div>
-                      <div style={{ color:'rgba(107,142,122,0.5)', fontSize:18, flexShrink:0 }}>→</div>
+                      <div style={{ color:p.color, opacity:0.5, fontSize:18, flexShrink:0, marginTop:4 }}>→</div>
                     </div>
                   </button>
-                )}
+                ))}
               </div>
             </>
           )
