@@ -44,7 +44,7 @@ async function supabaseUpsert(story: StoryArchiveItem): Promise<boolean> {
       narrative: story.narrative || '',
       extraction: story.extraction ?? null,
       storyboard: story.storyboard ?? null,
-      assets: { images: story.generatedImages || [], videos: [], audio: [] },
+      assets: { images: story.generatedImages || [], videos: [], audio: (story as any).beatAudio || [] },
       org_id: '71077b47-66e8-4fd9-90e7-709773ea6582',
       status: 'complete',
       saved_at: story.savedAt || new Date().toISOString(),

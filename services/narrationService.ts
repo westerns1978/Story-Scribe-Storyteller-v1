@@ -68,7 +68,10 @@ export async function narrateText(
   }
 }
 
-// ─── Global audio manager — prevents overlapping voices ───
+// ─── Global audio singleton — prevents ALL overlapping voices ───
+// Every playAudioBuffer call stops whatever was playing before.
+// This is the single source of truth for narration audio across
+// CinematicReveal, StorybookViewer, YourStoryScreen, MemoryLane, etc.
 let _activeStop: (() => void) | null = null;
 let _activeCtx: AudioContext | null = null;
 
@@ -78,13 +81,14 @@ export function stopAllAudio(): void {
 }
 
 // ─── Play an AudioBuffer, returns a stop function ───
+// ALWAYS stops previous audio first — global singleton, no opt-out.
 export function playAudioBuffer(
   audioBuffer: AudioBuffer,
   audioContext: AudioContext,
-  options: { onEnded?: () => void; gainValue?: number; skipGlobalTrack?: boolean } = {}
+  options: { onEnded?: () => void; gainValue?: number } = {}
 ): () => void {
-  // Stop any previously playing audio (unless caller manages its own queue)
-  if (!options.skipGlobalTrack) stopAllAudio();
+  // Kill any previously playing narration globally
+  stopAllAudio();
 
   const source = audioContext.createBufferSource();
   source.buffer = audioBuffer;
@@ -98,18 +102,14 @@ export function playAudioBuffer(
 
   const stop = () => { try { source.stop(); } catch {} };
 
-  if (options.onEnded) source.onended = options.onEnded;
-
-  // Track globally so next play call can stop this one
-  if (!options.skipGlobalTrack) {
-    _activeStop = stop;
-    _activeCtx = audioContext;
-    source.onended = () => {
-      _activeStop = null;
-      _activeCtx = null;
-      options.onEnded?.();
-    };
-  }
+  // Track globally so the next play call can kill this one
+  _activeStop = stop;
+  _activeCtx = audioContext;
+  source.onended = () => {
+    // Only clear if we're still the active one (not already replaced)
+    if (_activeStop === stop) { _activeStop = null; _activeCtx = null; }
+    options.onEnded?.();
+  };
 
   return stop;
 }

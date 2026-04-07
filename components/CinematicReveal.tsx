@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ActiveStory } from '../types';
 import { BRAND } from '../utils/brandUtils';
 import { findMusicFromSuggestion, toneToMusicQuery } from '../services/musicService';
-import { narrateText, playAudioBuffer } from '../services/narrationService';
+import { narrateText, playAudioBuffer, stopAllAudio } from '../services/narrationService';
 
 interface CinematicRevealProps {
   story: ActiveStory;
@@ -176,7 +176,14 @@ const CinematicReveal: React.FC<CinematicRevealProps> = ({
     } catch { return null; }
   }, [scenes, narratorVoice, story]);
 
-  const stopNarrationRef = useRef<(() => void) | null>(null);
+  // ── Pre-fetch narration for scenes 0 and 1 on mount ──────────────────────
+  // Eliminates the 20-30s startup delay when user clicks play
+  useEffect(() => {
+    if (scenes.length > 0) {
+      fetchNarration(0).catch(() => {});
+      if (scenes.length > 1) fetchNarration(1).catch(() => {});
+    }
+  }, [scenes.length, fetchNarration]);
 
   const playScene = useCallback(async (idx: number) => {
     if (idx >= totalScenes) {
@@ -185,9 +192,8 @@ const CinematicReveal: React.FC<CinematicRevealProps> = ({
       return;
     }
 
-    // Stop any previous narration before starting the new scene — one voice at a time
-    if (stopNarrationRef.current) { try { stopNarrationRef.current(); } catch {} stopNarrationRef.current = null; }
-    if (activeAudioCtxRef.current) { try { activeAudioCtxRef.current.close(); } catch {} activeAudioCtxRef.current = null; }
+    // Global singleton in narrationService handles stopping previous audio
+    stopAllAudio();
 
     setCurrentScene(idx); setSceneProgress(0); setPreparingScene(false);
     if (sceneTimerRef.current) clearTimeout(sceneTimerRef.current);
@@ -207,13 +213,12 @@ const CinematicReveal: React.FC<CinematicRevealProps> = ({
     if (narResult) {
       if (musicRef.current && !musicRef.current.paused) fadeMusic(0.08, 800);
       await new Promise<void>(resolve => {
-        stopNarrationRef.current = playAudioBuffer(narResult.audioBuffer, narResult.audioContext, { onEnded: resolve, gainValue: 1.0, skipGlobalTrack: true });
+        playAudioBuffer(narResult.audioBuffer, narResult.audioContext, { onEnded: resolve, gainValue: 1.0 });
         activeAudioCtxRef.current = narResult.audioContext;
         sceneStartTimeRef.current = narResult.audioContext.currentTime;
         setTimeout(resolve, 60000);
       });
       activeAudioCtxRef.current = null;
-      stopNarrationRef.current = null;
       if (musicRef.current && !musicRef.current.paused) fadeMusic(0.15, 1000);
       // Ensure minimum 8s per scene even if narration is shorter
       const narDurationMs = (narResult.audioBuffer.duration || 8) * 1000;
@@ -279,7 +284,7 @@ const CinematicReveal: React.FC<CinematicRevealProps> = ({
   }, [isPlaying, isPaused]);
 
   const handleStop = useCallback(() => {
-    if (stopNarrationRef.current) { try { stopNarrationRef.current(); } catch {} stopNarrationRef.current = null; }
+    stopAllAudio();
     if (activeAudioCtxRef.current) { try { activeAudioCtxRef.current.close(); } catch {} activeAudioCtxRef.current = null; }
     if (musicRef.current) { musicRef.current.pause(); musicRef.current.src = ''; musicRef.current = null; }
     if (sceneTimerRef.current) clearTimeout(sceneTimerRef.current);
