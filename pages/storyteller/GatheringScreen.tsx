@@ -537,7 +537,7 @@ const GatheringScreen: React.FC<GatheringScreenProps> = ({
         )}
 
         {/* ── Mood selector ── */}
-        {totalMaterials > 0 && (
+        {(
           <div style={{ marginBottom: 24 }}>
             <div style={{ fontSize: 11, fontFamily: 'system-ui', fontWeight: 700,
               letterSpacing: '0.2em', textTransform: 'uppercase',

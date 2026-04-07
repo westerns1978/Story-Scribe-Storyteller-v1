@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BRAND, WISSUMS_BG, WISSUMS_PORTRAIT } from '../utils/brandUtils';
+import { isWissums, BRAND, WISSUMS_BG, WISSUMS_PORTRAIT } from '../utils/brandUtils';
 
 interface WissumsLandingProps {
   onSelectTier: (tier: 'basic' | 'premium') => void;
@@ -70,9 +70,9 @@ export const WissumsLanding: React.FC<WissumsLandingProps> = ({ onSelectTier, is
 
       {/* Atmospheric background */}
       <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none' }}>
-        <img src={WISSUMS_BG} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.18 }} />
-        <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse 110% 50% at 50% 110%, rgba(196,151,59,0.12) 0%, rgba(139,46,59,0.08) 40%, transparent 65%)' }} />
-        <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse 85% 85% at 50% 50%, transparent 35%, rgba(4,2,6,0.9) 100%)' }} />
+        <img src={WISSUMS_BG} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.35 }} />
+        <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse 110% 50% at 50% 110%, rgba(196,151,59,0.08) 0%, rgba(139,46,59,0.05) 40%, transparent 65%)' }} />
+        <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse 85% 85% at 50% 50%, transparent 45%, rgba(4,2,6,0.7) 100%)' }} />
       </div>
 
       <div style={{ position: 'relative', zIndex: 10, maxWidth: 640, margin: '0 auto', padding: '48px 24px 64px' }}>
@@ -198,6 +198,23 @@ export const WissumsLanding: React.FC<WissumsLandingProps> = ({ onSelectTier, is
               <div style={{ fontWeight: 900, fontSize: 24, fontFamily: 'Georgia, serif', color: 'rgba(196,151,59,0.9)' }}>$49</div>
             </button>
           </div>
+          {!isWissums && (
+            <div style={{ textAlign: 'center', marginTop: 14 }}>
+              <button
+                onClick={() => onSelectTier('basic')}
+                style={{
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  fontSize: 11, fontFamily: 'Georgia, serif', fontStyle: 'italic',
+                  color: 'rgba(245,236,215,0.25)', textDecoration: 'underline',
+                  transition: 'color .2s',
+                }}
+                onMouseEnter={e => e.currentTarget.style.color = 'rgba(245,236,215,0.5)'}
+                onMouseLeave={e => e.currentTarget.style.color = 'rgba(245,236,215,0.25)'}
+              >
+                Skip — Demo Mode
+              </button>
+            </div>
+          )}
         </div>
 
         {/* How it works */}

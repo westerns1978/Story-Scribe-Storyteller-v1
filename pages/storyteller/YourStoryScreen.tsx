@@ -681,10 +681,10 @@ export const YourStoryScreen: React.FC<YourStoryScreenProps> = ({
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
               <button onClick={() => setIsViewerOpen(true)} className="px-10 py-5 bg-heritage-burgundy text-white font-black rounded-full shadow-2xl flex items-center justify-center gap-4 text-xs uppercase tracking-widest hover:scale-[1.02] active:scale-95 transition-all"><BookOpenIcon className="w-4 h-4" /> Open Storybook</button>
-              {paidTier === 'premium' ? (
+              {(!isWissums || paidTier === 'premium') ? (
                 <>
                   <DownloadMemoryBook story={{ ...story, generatedImages: localImages, narrative: editedNarrative || story.narrative } as any} />
-                  <GenerateMovieButton story={story} />
+                  {(!isWissums || paidTier === 'premium') && <GenerateMovieButton story={story} />}
                 </>
               ) : (
                 <div className="relative group">
