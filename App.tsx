@@ -55,7 +55,7 @@ const App: React.FC = () => {
   const [subject, setSubject] = useState('');
   const [language, setLanguage] = useState('en');
   const [narratorVoice, setNarratorVoice] = useState<'Kore' | 'Fenrir'>('Kore');
-  const [petMode, setPetMode] = useState(true); // Always pet mode in Wissums
+  const [petMode, setPetMode] = useState(window.location.hostname.includes('wissums'));
   const [persona, setPersona] = useState<'curator' | 'keeper' | 'pet'>('pet');
   const [savedStories, setSavedStories] = useState<{ sessionId: string; storytellerName: string; savedAt: string }[]>([]);
   const [fullSavedStories, setFullSavedStories] = useState<StoryArchiveItem[]>([]);
@@ -493,21 +493,26 @@ const App: React.FC = () => {
   }
 
   // ── Landing page — shown before payment ────────────────────────────────────
-  if (!paidTier && phase === 'landing') {
+  if (window.location.hostname.includes('wissums') && !paidTier && phase === 'landing') {
     return <WissumsLanding onSelectTier={handleSelectTier} isLoading={checkoutLoading} />;
   }
 
   // ── If no paid tier and somehow past landing, redirect to landing ──────────
-  if (!paidTier && !isAuthenticated) {
+  if (window.location.hostname.includes('wissums') && !paidTier && !isAuthenticated) {
     return <WissumsLanding onSelectTier={handleSelectTier} isLoading={checkoutLoading} />;
   }
 
-  // Auto-login as guest if paid but not authenticated
-  if (paidTier && !isAuthenticated) {
+  // Auto-login as guest if paid but not authenticated (Wissums only)
+  if (paidTier && !isAuthenticated && window.location.hostname.includes('wissums')) {
     login({
       id: `wissums-${Date.now()}`, name: 'Pet Parent',
       email: 'customer@wissums.com', org_id: '71077b47-66e8-4fd9-90e7-709773ea6582', is_admin: false,
     });
+  }
+
+  // Story Scribe — show LandingGate if not authenticated
+  if (!isAuthenticated && !window.location.hostname.includes('wissums')) {
+    return <LandingGate onLogin={handleLogin} />;
   }
 
   return (
