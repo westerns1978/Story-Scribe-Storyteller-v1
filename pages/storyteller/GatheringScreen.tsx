@@ -582,8 +582,13 @@ const GatheringScreen: React.FC<GatheringScreenProps> = ({
         {totalMaterials > 0 && persona === 'keeper' && (
           <IntakeAgent
             subject={subject}
-            material={material}
+            transcript={material?.transcript || ''}
+            photoCount={artifacts.length}
+            photoFacts={extractedPhotoFacts?.flatMap(f => f?.verifiedFacts || []) || []}
+            importedTexts={importedTexts}
             petMode={petMode}
+            quickNote={''}
+            onTalkToConnie={onTalk}
           />
         )}
       </div>

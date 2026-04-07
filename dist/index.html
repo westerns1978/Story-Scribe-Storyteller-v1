@@ -8,10 +8,17 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Wissums">
-    <link rel="manifest" href="/assets/manifest-C3qoQdsh.json">
+    <meta name="apple-mobile-web-app-title" content="Story Scribe">
+    <link rel="manifest" href="/assets/manifest-BCjBL1VQ.json">
 
-    <title>Wissums | Preserve Your Pet's Story Forever</title>
+    <title>Story Scribe | Preserve Life Stories Forever</title>
+    <script>
+      // Domain-aware title + manifest
+      if (window.location.hostname.includes('wissums')) {
+        document.title = "Wissums | Preserve Your Pet's Story Forever";
+        document.querySelector('meta[name="apple-mobile-web-app-title"]').content = 'Wissums';
+      }
+    </script>
     <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600&family=Lora:ital,wght@0,400;0,500;1,400&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -178,7 +185,7 @@ body {
   }
 }
 </script>
-    <script type="module" crossorigin src="/assets/index-Bm4C31xH.js"></script>
+    <script type="module" crossorigin src="/assets/index-BC12QVs3.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/vendor-CDZ8pPAh.js">
     <link rel="modulepreload" crossorigin href="/assets/jspdf-D4B-eOoR.js">
   </head>

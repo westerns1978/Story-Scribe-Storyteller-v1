@@ -13,6 +13,7 @@
 // ============================================
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { BRAND, CONNIE_PORTRAIT } from '../utils/brandUtils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -62,8 +63,12 @@ const CASCADE_URL = `${SUPABASE_URL}/functions/v1/story-cascade`;
 // Pure client-side — no API call needed for scoring
 
 function assessIntake(props: IntakeAgentProps): IntakeAssessment {
-  const { transcript, photoCount, photoFacts, importedTexts, subject } = props;
-  const allText = [transcript, ...importedTexts.map(t => t.content)].join(' ');
+  const transcript = props.transcript || '';
+  const photoCount = props.photoCount || 0;
+  const photoFacts = props.photoFacts || [];
+  const importedTexts = props.importedTexts || [];
+  const subject = props.subject || '';
+  const allText = [transcript, ...importedTexts.map(t => t?.content || '')].join(' ');
   const wordCount = allText.trim().split(/\s+/).filter(Boolean).length;
 
   // ── Narrative depth ────────────────────────────────────────────────────────
@@ -99,10 +104,12 @@ function assessIntake(props: IntakeAgentProps): IntakeAssessment {
   // ── Factual anchors ────────────────────────────────────────────────────────
   let factualAnchors = 0;
   if (/\b(19|20)\d{2}\b/.test(allText)) factualAnchors += 25; // year mentioned
-  if (photoFacts.some(f => /\d{4}|jersey|school|team/.test(f))) factualAnchors += 25;
+  if (photoFacts.some(f => /\d{4}|jersey|school|team/.test(f || ''))) factualAnchors += 25;
   if (importedTexts.length > 0) factualAnchors += 25; // celebration/document
   if (/born in|from|grew up in|lived in|moved to/i.test(allText)) factualAnchors += 15;
-  if (allText.length > 0 && subject && new RegExp(subject.split(' ')[0], 'i').test(allText)) factualAnchors += 10;
+  if (allText.length > 0 && subject) {
+    try { if (new RegExp(subject.split(' ')[0], 'i').test(allText)) factualAnchors += 10; } catch {}
+  }
   factualAnchors = Math.min(100, factualAnchors);
 
   // ── Overall + gap ──────────────────────────────────────────────────────────
@@ -135,7 +142,7 @@ function assessIntake(props: IntakeAgentProps): IntakeAssessment {
       hasText: wordCount > 30,
       hasVoice: transcript.trim().length > 50,
       hasDocuments: importedTexts.length > 0,
-      hasScans: importedTexts.some(t => t.name.startsWith('Scan:')),
+      hasScans: importedTexts.some(t => t?.name?.startsWith('Scan:')),
     },
   };
 }
@@ -151,7 +158,7 @@ async function fetchConnieSuggestionFromSupabase(
   const { inputTypes, dominantGap, overallScore, readyToCreate } = assessment;
 
   // Build a context-aware system prompt
-  const systemPrompt = `You are Connie — a warm, unhurried, deeply compassionate memory curator for Wissums.
+  const systemPrompt = `You are ${BRAND.agentName} — a warm, unhurried, deeply compassionate memory curator for ${BRAND.name}.
 Your single purpose right now is to help this family give ${subject}'s story the richness it deserves.
 You speak like a trusted friend who is also an expert at drawing out memories — never clinical, never rushed.
 
@@ -304,12 +311,12 @@ const IntakeAgent: React.FC<IntakeAgentProps & {
     setAssessment(a);
 
     // Key for change detection
-    const key = `${quickNote.length}-${photoCount}-${transcript.length}-${importedTexts.length}`;
+    const key = `${(quickNote || '').length}-${photoCount || 0}-${(transcript || '').length}-${(importedTexts || []).length}`;
     if (key === lastAssessmentRef.current) return;
     lastAssessmentRef.current = key;
 
     // Reset dismissed state when content changes significantly
-    if (quickNote.length % 50 === 0 || photoCount > 0) setDismissed(false);
+    if ((quickNote || '').length % 50 === 0 || (photoCount || 0) > 0) setDismissed(false);
 
     // Debounce suggestion fetch
     if (fetchTimeoutRef.current) clearTimeout(fetchTimeoutRef.current);
@@ -324,7 +331,7 @@ const IntakeAgent: React.FC<IntakeAgentProps & {
     }, quickNote.length > 30 ? 2500 : 800);
 
     return () => { if (fetchTimeoutRef.current) clearTimeout(fetchTimeoutRef.current); };
-  }, [subject, transcript, photoCount, photoFacts.length, importedTexts.length, quickNote, petMode]);
+  }, [subject, transcript, photoCount, (photoFacts || []).length, (importedTexts || []).length, quickNote, petMode]);
 
   if (!assessment) return null;
 
@@ -351,8 +358,8 @@ const IntakeAgent: React.FC<IntakeAgentProps & {
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, padding: '18px 20px 14px' }}>
         <div style={{ position: 'relative', flexShrink: 0 }}>
           <img
-            src="https://storage.googleapis.com/westerns1978-digital-assets/Websites/wissums/connie-ai.png"
-            alt="Connie"
+            src={CONNIE_PORTRAIT}
+            alt={BRAND.agentName}
             style={{
               width: 44, height: 44, borderRadius: '50%', objectFit: 'cover',
               border: `2px solid ${accentColor}`,
@@ -372,7 +379,7 @@ const IntakeAgent: React.FC<IntakeAgentProps & {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
             <span style={{ fontSize: 11, fontFamily: 'system-ui', fontWeight: 900, letterSpacing: '0.3em', textTransform: 'uppercase', color: accentColor }}>
-              Connie
+              {BRAND.agentName}
             </span>
             {readyToCreate && (
               <span style={{ fontSize: 9, fontFamily: 'system-ui', fontWeight: 700, letterSpacing: '0.2em', textTransform: 'uppercase', padding: '2px 8px', borderRadius: 20, background: 'rgba(196,151,59,0.15)', color: 'rgba(196,151,59,0.9)', border: '1px solid rgba(196,151,59,0.3)' }}>
@@ -414,7 +421,7 @@ const IntakeAgent: React.FC<IntakeAgentProps & {
                       border: '1px solid rgba(255,255,255,0.1)', transition: 'all 0.2s',
                     }}
                   >
-                    🎙 Talk to Connie
+                    🎙 Talk to {BRAND.agentName}
                   </button>
                 )}
                 <button
@@ -432,7 +439,7 @@ const IntakeAgent: React.FC<IntakeAgentProps & {
             </div>
           ) : isFetching ? (
             <p style={{ fontSize: 13, fontStyle: 'italic', color: 'rgba(255,255,255,0.3)', margin: 0 }}>
-              Connie is reading what you've shared...
+              {BRAND.agentName} is reading what you've shared...
             </p>
           ) : (
             <p style={{ fontSize: 13, fontStyle: 'italic', color: 'rgba(255,255,255,0.3)', margin: 0 }}>
