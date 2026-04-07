@@ -168,7 +168,9 @@ const GatheringScreen: React.FC<GatheringScreenProps> = ({
   const gold = '#C4973B';
   const dark = '#13100C';
 
-  const totalMaterials = material.artifacts.length + material.importedTexts.length +
+  const artifacts = material.artifacts || [];
+  const importedTexts = material.importedTexts || [];
+  const totalMaterials = artifacts.length + importedTexts.length +
     (material.transcript ? 1 : 0);
   const isProcessing = isUploading || pendingAnalysis > 0;
   // curator = fire immediately with 1+ item, keeper = encourage more but don't block
@@ -281,8 +283,13 @@ const GatheringScreen: React.FC<GatheringScreenProps> = ({
           (async () => {
             try {
               const b64 = await fileToBase64(file);
+              // Guard: enhancePhoto requires data:image/...;base64,... format
+              if (!b64 || typeof b64 !== 'string' || !b64.match(/^data:image\/\w+;base64,/)) {
+                console.warn('[GatheringScreen] Photo restore skipped: invalid base64 format');
+                return;
+              }
               const enhanced = await enhancePhoto(b64, 'restore', () => {});
-              if (enhanced && enhanced.imageData) {
+              if (enhanced?.imageData) {
                 onPhotos([{ ...asset, id: `restored-${asset.id}`, public_url: enhanced.imageData, metadata: { ...asset.metadata, restored: true } }]);
               }
             } catch (e) {
@@ -400,7 +407,7 @@ const GatheringScreen: React.FC<GatheringScreenProps> = ({
     // ── Create story ──────────────────────────────────────────────────────────
   const handleGenerate = () => {
     if (!canCreate) return;
-    const allVerifiedFacts = extractedPhotoFacts.flatMap(f => f.verifiedFacts);
+    const allVerifiedFacts = extractedPhotoFacts.flatMap(f => f.verifiedFacts || []);
     if (allVerifiedFacts.length > 0) {
       onText('Verified Photo Facts', `[VERIFIED FACTS FROM PHOTOS — USE VERBATIM]\n${allVerifiedFacts.map((f, i) => `${i + 1}. ${f}`).join('\n')}`);
     }
@@ -479,7 +486,7 @@ const GatheringScreen: React.FC<GatheringScreenProps> = ({
         />
 
         {/* ── Added items ── */}
-        {(material.artifacts.length > 0 || material.importedTexts.length > 0 || material.transcript) && (
+        {(artifacts.length > 0 || importedTexts.length > 0 || material.transcript) && (
           <div style={{ marginBottom: 28 }}>
             <div style={{ fontSize: 11, fontFamily: 'system-ui', fontWeight: 700,
               letterSpacing: '0.2em', textTransform: 'uppercase',
@@ -488,16 +495,16 @@ const GatheringScreen: React.FC<GatheringScreenProps> = ({
             </div>
 
             {/* Photo thumbnails */}
-            {material.artifacts.length > 0 && (
+            {artifacts.length > 0 && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
-                {material.artifacts.map(a => (
+                {artifacts.map(a => (
                   <AssetThumb key={a.id} asset={a} onRemove={onRemoveArtifact} restoring={restoringIds.has(a.id)} />
                 ))}
               </div>
             )}
 
             {/* Text items */}
-            {material.importedTexts.map((t, i) => (
+            {importedTexts.map((t, i) => (
               <div key={i} style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 padding: '10px 14px', borderRadius: 10, marginBottom: 6,
