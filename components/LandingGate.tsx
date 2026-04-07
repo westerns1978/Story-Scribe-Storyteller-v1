@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { IValtModal } from './IValtModal';
+import { isWissums, BRAND } from '../utils/brandUtils';
 
 interface Customer {
   id: string;
@@ -76,7 +77,7 @@ export const LandingGate: React.FC<LandingGateProps> = ({ onLogin }) => {
 
   const guestLogin = () => onLogin({
     id: `guest-${Date.now()}`, name: 'Guest',
-    email: 'guest@storyscribe.app', org_id: DEMO_ORG_ID, is_admin: false,
+    email: isWissums ? 'guest@wissums.com' : 'guest@storyscribe.app', org_id: DEMO_ORG_ID, is_admin: false,
   });
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) =>
@@ -126,8 +127,8 @@ export const LandingGate: React.FC<LandingGateProps> = ({ onLogin }) => {
         const hasKey = await aiStudio.hasSelectedApiKey();
         if (!hasKey) await aiStudio.openSelectKey();
       }
-      const admin = { id: 'admin-001', email: 'admin@wissums.com', name: 'Archive Curator', org_id: DEMO_ORG_ID, is_admin: true };
-      localStorage.setItem('wissums_customer', JSON.stringify(admin));
+      const admin = { id: 'admin-001', email: isWissums ? 'admin@wissums.com' : 'admin@storyscribe.app', name: 'Archive Curator', org_id: DEMO_ORG_ID, is_admin: true };
+      localStorage.setItem(isWissums ? 'wissums_customer' : 'storyscribe_customer', JSON.stringify(admin));
       onLogin(admin);
     } catch { setError('Override failed.'); }
     finally { setIsLoading(false); }

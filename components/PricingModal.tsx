@@ -3,6 +3,7 @@ import React from 'react';
 import { UserTier } from '../types';
 import XMarkIcon from './icons/XMarkIcon';
 import CheckIcon from './icons/CheckIcon';
+import { BRAND } from '../utils/brandUtils';
 import SparklesIcon from './icons/SparklesIcon';
 import BoltIcon from './icons/BoltIcon';
 
@@ -21,7 +22,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, onS
       name: 'Photo Pack',
       price: '$19',
       description: 'The foundation for restoring your most cherished family artifacts.',
-      features: ['5 Artifact Restorations', '6 Distinct Artistic Styles', '8K Upscaled Resolution', 'No Wissums Watermarks'],
+      features: ['5 Artifact Restorations', '6 Distinct Artistic Styles', '8K Upscaled Resolution', `No ${BRAND.name} Watermarks`],
       buttonText: 'Initialize Pack',
       color: 'terracotta'
     },
@@ -40,7 +41,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, onS
       name: 'The Full Legacy',
       price: '$297',
       description: 'Our most immersive preservation experience for future generations.',
-      features: ['Unlimited Restoration', 'Connie AI Guided Interview', 'Cinematic Director\'s Cut', 'Premium Hardcover Print Ready', 'Wissums Voice Integration'],
+      features: ['Unlimited Restoration', 'Connie AI Guided Interview', `Cinematic Director's Cut`, 'Premium Hardcover Print Ready', `${BRAND.name} Voice Integration`],
       buttonText: 'Preserve Forever',
       color: 'sienna'
     }
@@ -111,7 +112,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, onS
 
         <footer className="p-8 bg-gemynd-cream/80 text-center border-t border-gemynd-soft-peach">
           <p className="text-xs text-gemynd-terracotta uppercase tracking-[0.3em] font-bold flex items-center justify-center gap-3">
-            <SparklesIcon className="w-5 h-5" /> Secured via Wissums Node Encryption
+            <SparklesIcon className="w-5 h-5" /> Secured via {BRAND.name} Node Encryption
           </p>
         </footer>
       </div>

@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { BRAND } from '../utils/brandUtils';
 
 // ── Curated quotes — grief, memory, legacy, the irreplaceable ──────────────
 const QUOTES = [
@@ -222,7 +223,7 @@ const StoryLoadingCinema: React.FC<Props> = ({ storytellerName, progressStage })
           fontSize: 9, fontWeight: 900, letterSpacing: '0.5em',
           textTransform: 'uppercase', color: 'rgba(196,151,59,0.45)',
           fontFamily: 'Georgia, "Times New Roman", serif',
-        }}>Wissums</span>
+        }}>{BRAND.name}</span>
       </div>
 
       {/* Center — Quote */}
@@ -342,7 +343,7 @@ const StoryLoadingCinema: React.FC<Props> = ({ storytellerName, progressStage })
           color: 'rgba(196,151,59,0.25)',
           margin: 0,
         }}>
-          Made with love by Wissums
+          Made with love by {BRAND.name}
         </p>
       </div>
     </div>

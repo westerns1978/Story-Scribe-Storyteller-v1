@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { ActiveStory } from '../../types';
+import { isWissums, BRAND } from '../../utils/brandUtils';
 import BookOpenIcon from '../../components/icons/BookOpenIcon';
 import ShareIcon from '../../components/icons/ShareIcon';
 import StorybookViewer from '../../components/StorybookViewer';
@@ -122,7 +123,7 @@ export const YourStoryScreen: React.FC<YourStoryScreenProps> = ({
 
   const handleShareWithFamily = async () => {
     const url = `${window.location.origin}/story/${story?.sessionId || 'unknown'}`;
-    const shareData = { title: `${story?.storytellerName}'s Legacy Story`, text: `I preserved ${story?.storytellerName}'s life story with Wissums.`, url };
+    const shareData = { title: `${story?.storytellerName}'s Legacy Story`, text: `I preserved ${story?.storytellerName}'s life story with ${BRAND.name}.`, url };
     try {
       if (navigator.share && navigator.canShare?.(shareData)) { await navigator.share(shareData); showToast('Story shared!', 'success'); }
       else { await navigator.clipboard.writeText(url); setCopyFeedback(true); showToast('Share link copied!', 'success'); setTimeout(() => setCopyFeedback(false), 2500); }
@@ -711,7 +712,7 @@ export const YourStoryScreen: React.FC<YourStoryScreenProps> = ({
               {isSharedView ? (
                 <div className="space-y-5 text-center py-4">
                   <div className="w-16 h-px bg-heritage-parchment mx-auto" />
-                  <p className="text-base font-serif italic text-heritage-inkMuted leading-relaxed max-w-xs mx-auto">This story was lovingly preserved with Wissums.</p>
+                  <p className="text-base font-serif italic text-heritage-inkMuted leading-relaxed max-w-xs mx-auto">This story was lovingly preserved with {BRAND.name}.</p>
                   <a href="/" className="inline-flex items-center gap-3 px-10 py-4 bg-heritage-burgundy text-white text-[10px] font-black uppercase tracking-widest rounded-full hover:bg-heritage-burgundy/90 transition-all shadow-xl">✦ Begin Preserving Your Story</a>
                 </div>
               ) : (

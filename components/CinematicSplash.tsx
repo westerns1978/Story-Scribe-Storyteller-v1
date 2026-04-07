@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { BRAND } from '../utils/brandUtils';
 
 interface CinematicSplashProps {
   onComplete: () => void;
@@ -139,7 +140,7 @@ export const CinematicSplash: React.FC<CinematicSplashProps> = ({ onComplete }) 
           fontSize:8, fontWeight:900, letterSpacing:'.5em',
           textTransform:'uppercase', color:'rgba(196,151,59,.4)',
           margin:0, fontFamily:'Georgia,serif',
-        }}>Wissums</p>
+        }}>{BRAND.name}</p>
       </div>
     </div>
   );

@@ -3,6 +3,7 @@ import { ConnieMessage } from '../types';
 import XMarkIcon from './icons/XMarkIcon';
 import MicrophoneIcon from './icons/MicrophoneIcon';
 import ImageIcon from './icons/ImageIcon';
+import { isWissums, BRAND, CONNIE_PORTRAIT as CONNIE_IMG_URL } from '../utils/brandUtils';
 import { VisualAuditPanel } from './VisualAuditPanel';
 import { LiveServerMessage, Modality, FunctionDeclaration, Type } from '@google/genai';
 import { getStoryTranscript, extractNameFromConversation, saveConversation } from '../services/chatService';
@@ -80,7 +81,7 @@ const capturePhotoArtifact: FunctionDeclaration = {
 function buildConniePrompt(options?: { language?: string; subjectName?: string }): string {
   const lang = options?.language || 'English';
   const subject = options?.subjectName || 'their pet';
-  return `You are Connie, a warm and playful pet story curator for Wissums.
+  return `You are Connie, a warm and ${isWissums ? 'playful pet story curator' : 'compassionate life story curator'} for ${BRAND.name}.
 PERSONA: Warm, playful, animal lover. Patient, encouraging, genuinely delighted by pet stories. Never rushed.
 LANGUAGE: Respond in ${lang}.
 SUBJECT: You are helping preserve the story of a beloved pet named ${subject}.
@@ -250,7 +251,7 @@ const ConnieAvatar: React.FC<{ size?: 'sm' | 'md' | 'lg' | 'xl'; isLive?: boolea
   const sizeClasses = { sm: 'w-10 h-10', md: 'w-12 h-12', lg: 'w-20 h-20', xl: 'w-48 h-48' };
   return (
     <div className={`${sizeClasses[size]} rounded-full overflow-hidden shadow-warm border-2 ${isLive ? 'border-heritage-sage animate-pulse' : 'border-heritage-parchment'} relative bg-heritage-linen transition-all duration-300 connie-fab`}>
-      <img src="https://storage.googleapis.com/westerns1978-digital-assets/Websites/wissums/connie-ai.png" alt="Connie AI" className="w-full h-full object-cover" />
+      <img src={CONNIE_IMG_URL} alt="Connie AI" className="w-full h-full object-cover" />
     </div>
   );
 };

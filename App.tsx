@@ -5,6 +5,7 @@ import { Customer, ActiveStory, StoryArchiveItem, NeuralAsset } from './types';
 import { generateStoryWithMagic } from './services/api';
 import { WissumsLanding } from './components/WissumsLanding';
 import { LandingGate } from './components/LandingGate';
+import { isWissums } from './utils/brandUtils';
 import StoryLoadingCinema from './components/StoryLoadingCinema';
 import { usePersistentSession } from './hooks/usePersistentSession';
 import { checkElderlyMode, enableElderlyMode } from './utils/accessibility';
@@ -52,12 +53,12 @@ const App: React.FC = () => {
   const [isCheckingPayment, setIsCheckingPayment] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
 
-  const [phase, setPhase] = useState<StorytellerPhase>(window.location.hostname.includes('wissums') ? 'landing' : 'welcome');
+  const [phase, setPhase] = useState<StorytellerPhase>(isWissums ? 'landing' : 'welcome');
   const [subject, setSubject] = useState('');
   const [language, setLanguage] = useState('en');
   const [narratorVoice, setNarratorVoice] = useState<'Kore' | 'Fenrir'>('Kore');
-  const [petMode, setPetMode] = useState(window.location.hostname.includes('wissums'));
-  const [persona, setPersona] = useState<'curator' | 'keeper' | 'pet'>('pet');
+  const [petMode, setPetMode] = useState(isWissums);
+  const [persona, setPersona] = useState<'curator' | 'keeper' | 'pet'>(isWissums ? 'pet' : 'curator');
   const [savedStories, setSavedStories] = useState<{ sessionId: string; storytellerName: string; savedAt: string }[]>([]);
   const [fullSavedStories, setFullSavedStories] = useState<StoryArchiveItem[]>([]);
   const [storiesLoading, setStoriesLoading] = useState(true);
@@ -90,10 +91,12 @@ const App: React.FC = () => {
             setPaidTier(result.tier);
             if (result.petName) setSubject(result.petName);
             // Auto-login as guest and go to welcome
-            login({
-              id: `wissums-${Date.now()}`, name: result.petName || 'Pet Parent',
-              email: 'customer@wissums.com', org_id: '71077b47-66e8-4fd9-90e7-709773ea6582', is_admin: false,
-            });
+            if (isWissums) {
+              login({
+                id: `wissums-${Date.now()}`, name: result.petName || 'Pet Parent',
+                email: 'customer@wissums.com', org_id: '71077b47-66e8-4fd9-90e7-709773ea6582', is_admin: false,
+              });
+            }
             setPhase('welcome');
           } else {
             console.warn('[Payment] Not verified — showing landing');
@@ -121,7 +124,7 @@ const App: React.FC = () => {
       if (tributeId) {
         window.history.replaceState({}, '', window.location.pathname);
         setTributeStoryId(tributeId);
-        setTributeSubject(tributeFor ? decodeURIComponent(tributeFor) : 'this pet');
+        setTributeSubject(tributeFor ? decodeURIComponent(tributeFor) : (isWissums ? 'this pet' : 'this person'));
         setIsInitialized(true);
         return;
       }
@@ -185,7 +188,7 @@ const App: React.FC = () => {
   const handleLogin = (c: Customer) => login(c);
   const handleLogout = () => { logout(); setPaidTier(null); sessionStorage.removeItem('wissums_tier'); window.location.href = '/'; };
 
-  const handleBegin = useCallback((name: string, lang: string, voice: 'Kore' | 'Fenrir' = 'Kore', isPet: boolean = true, selectedPersona: 'curator' | 'keeper' | 'pet' = 'pet') => {
+  const handleBegin = useCallback((name: string, lang: string, voice: 'Kore' | 'Fenrir' = 'Kore', isPet: boolean = isWissums, selectedPersona: 'curator' | 'keeper' | 'pet' = isWissums ? 'pet' : 'curator') => {
     setSubject(name || '');
     setLanguage(lang || 'en');
     setNarratorVoice(voice);
@@ -269,7 +272,7 @@ const App: React.FC = () => {
         return;
       }
 
-      const storyName = subject.trim() || 'Your Pet';
+      const storyName = subject.trim() || (isWissums ? 'Your Pet' : 'Someone Special');
       const artifactData = material.artifacts.map(a => ({
         data: '',
         mimeType: a.file_type || 'image/jpeg',
@@ -397,7 +400,9 @@ const App: React.FC = () => {
   const handleShareStory = useCallback(async (story: ActiveStory) => {
     const shareUrl = story.share_url || `${window.location.origin}/story/${story.sessionId}`;
     const shareTitle = `${story.storytellerName}'s Story`;
-    const shareText = `Check out ${story.storytellerName}'s story on Wissums!`;
+    const shareText = isWissums
+      ? `Check out ${story.storytellerName}'s story on Wissums!`
+      : `Connie preserved this story — ${shareTitle}`;
 
     if (navigator.share) {
       try { await navigator.share({ title: shareTitle, text: shareText, url: shareUrl }); return; }
@@ -493,26 +498,25 @@ const App: React.FC = () => {
     );
   }
 
-  // ── Landing page — shown before payment ────────────────────────────────────
-  if (window.location.hostname.includes('wissums') && !paidTier && phase === 'landing') {
-    return <WissumsLanding onSelectTier={handleSelectTier} isLoading={checkoutLoading} />;
-  }
-
-  // ── If no paid tier and somehow past landing, redirect to landing ──────────
-  if (window.location.hostname.includes('wissums') && !paidTier && !isAuthenticated) {
-    return <WissumsLanding onSelectTier={handleSelectTier} isLoading={checkoutLoading} />;
-  }
-
-  // Auto-login as guest if paid but not authenticated (Wissums only)
-  if (paidTier && !isAuthenticated && window.location.hostname.includes('wissums')) {
-    login({
-      id: `wissums-${Date.now()}`, name: 'Pet Parent',
-      email: 'customer@wissums.com', org_id: '71077b47-66e8-4fd9-90e7-709773ea6582', is_admin: false,
-    });
+  // ── Wissums paywall — only on wissums.web.app ──────────────────────────────
+  if (isWissums) {
+    if (!paidTier && phase === 'landing') {
+      return <WissumsLanding onSelectTier={handleSelectTier} isLoading={checkoutLoading} />;
+    }
+    if (!paidTier && !isAuthenticated) {
+      return <WissumsLanding onSelectTier={handleSelectTier} isLoading={checkoutLoading} />;
+    }
+    // Auto-login as guest if paid but not authenticated
+    if (paidTier && !isAuthenticated) {
+      login({
+        id: `wissums-${Date.now()}`, name: 'Pet Parent',
+        email: 'customer@wissums.com', org_id: '71077b47-66e8-4fd9-90e7-709773ea6582', is_admin: false,
+      });
+    }
   }
 
   // Story Scribe — show LandingGate if not authenticated
-  if (!isAuthenticated && !window.location.hostname.includes('wissums')) {
+  if (!isWissums && !isAuthenticated) {
     return <LandingGate onLogin={handleLogin} />;
   }
 
@@ -583,7 +587,7 @@ const App: React.FC = () => {
           )}
           {phase === 'creating' && (
             <motion.div key="creating" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
-              <StoryLoadingCinema storytellerName={subject || 'Your Pet'} progressStage={progressStage} />
+              <StoryLoadingCinema storytellerName={subject || (isWissums ? 'Your Pet' : 'Someone Special')} progressStage={progressStage} />
             </motion.div>
           )}
           {phase === 'story' && activeStory && (

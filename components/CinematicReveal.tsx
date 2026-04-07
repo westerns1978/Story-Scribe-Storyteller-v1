@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ActiveStory } from '../types';
+import { BRAND } from '../utils/brandUtils';
 import { findMusicFromSuggestion, toneToMusicQuery } from '../services/musicService';
 import { narrateText, playAudioBuffer } from '../services/narrationService';
 
@@ -355,7 +356,7 @@ const CinematicReveal: React.FC<CinematicRevealProps> = ({
             Tap anywhere to begin
           </p>
         </div>
-        <div style={{ position:'absolute', bottom:36, left:0, right:0, textAlign:'center', fontSize:9, fontWeight:700, letterSpacing:'0.4em', textTransform:'uppercase', color:'rgba(196,151,59,0.25)' }}>Wissums</div>
+        <div style={{ position:'absolute', bottom:36, left:0, right:0, textAlign:'center', fontSize:9, fontWeight:700, letterSpacing:'0.4em', textTransform:'uppercase', color:'rgba(196,151,59,0.25)' }}>{BRAND.name}</div>
       </div>
     );
   }
@@ -370,7 +371,7 @@ const CinematicReveal: React.FC<CinematicRevealProps> = ({
           <h2 className="text-4xl font-display font-black text-white tracking-tight">
             The story of <span className="text-heritage-warmGold">{storytellerName}</span>
           </h2>
-          <p className="text-white/50 font-serif italic text-lg">Preserved forever in the Wissums Archive.</p>
+          <p className="text-white/50 font-serif italic text-lg">Preserved forever in the {BRAND.name} Archive.</p>
           <div className="flex flex-col gap-3">
             <button onClick={() => { setAllDone(false); setCurrentScene(0); setIsPlaying(false); }}
               className="px-8 py-4 bg-white/10 hover:bg-white/20 text-white font-black rounded-full text-xs uppercase tracking-[0.3em] transition-all">Watch Again</button>

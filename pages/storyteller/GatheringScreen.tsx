@@ -11,7 +11,7 @@ const SUPABASE_URL = 'https://ldzzlndsspkyohvzfiiu.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxkenpsbmRzc3BreW9odnpmaWl1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE3MTEzMDUsImV4cCI6MjA3NzI4NzMwNX0.SK2Y7XMzeGQoVMq9KAmEN1vwy7RjtbIXZf6TyNneFnI';
 const CASCADE_URL = `${SUPABASE_URL}/functions/v1/story-cascade`;
 
-const CONNIE_PORTRAIT = 'https://storage.googleapis.com/westerns1978-digital-assets/Websites/wissums/connie-ai.png';
+import { CONNIE_PORTRAIT } from '../../utils/brandUtils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

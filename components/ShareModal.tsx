@@ -3,6 +3,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import JSZip from 'jszip';
 import { ActiveStory, StoryArchiveItem } from '../types';
 import XMarkIcon from './icons/XMarkIcon';
+import { BRAND } from '../utils/brandUtils';
 import ShareIcon from './icons/ShareIcon';
 import ImageIcon from './icons/ImageIcon';
 import FilePdfIcon from './icons/FilePdfIcon';
@@ -37,7 +38,7 @@ const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, story, showToa
         printWindow.document.write(`
             <html>
                 <head>
-                    <title>Wissums Archive Tag</title>
+                    <title>${BRAND.name} Archive Tag</title>
                     <style>
                         body { font-family: 'Playfair Display', serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f9f7f2; }
                         .tag { width: 300px; padding: 40px; border: 2px solid #962D2D; border-radius: 20px; text-align: center; background: white; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }

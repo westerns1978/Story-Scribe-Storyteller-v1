@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { isWissums, BRAND, CONNIE_PORTRAIT } from '../../utils/brandUtils';
 
 interface WelcomeScreenProps {
   activeStoryName?: string;
@@ -20,7 +21,7 @@ interface WelcomeScreenProps {
 
 type Persona = 'curator' | 'keeper' | 'subject' | 'pet' | null;
 
-const CONNIE_IMG = 'https://storage.googleapis.com/westerns1978-digital-assets/Websites/wissums/connie-ai.png';
+const CONNIE_IMG = CONNIE_PORTRAIT;
 
 const LANGUAGES = [
   { code: 'en', native: 'English' }, { code: 'es', native: 'Español' },
@@ -102,7 +103,7 @@ const FieldGuideModal: React.FC<{ onClose: () => void }> = ({ onClose }) => (
       }}>
         <div>
           <div style={{ fontSize: 8, fontWeight: 900, letterSpacing: '.4em', textTransform: 'uppercase', color: 'rgba(196,151,59,0.5)', marginBottom: 4 }}>
-            Wissums
+            {BRAND.name}
           </div>
           <div style={{ fontFamily: 'Georgia,serif', fontWeight: 700, fontSize: '1.3rem', color: 'rgba(245,236,215,0.9)' }}>
             Field Guide
@@ -162,14 +163,14 @@ const FieldGuideModal: React.FC<{ onClose: () => void }> = ({ onClose }) => (
         <Divider />
 
         <Section title="🏥 Care Facility Guide" color="#8B2E3B">
-          <p style={bodyStyle}>Use this strategy to introduce Wissums to care facilities and senior living communities.</p>
+          <p style={bodyStyle}>Use this strategy to introduce {BRAND.name} to care facilities and senior living communities.</p>
           <Label>Value Proposition</Label>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
             {[
               ['Family Engagement', 'Increases family satisfaction by creating a powerful, positive touchpoint.'],
               ['Resident Wellbeing', 'Leverages the therapeutic benefits of reminiscence therapy.'],
               ['Marketing Differentiation', 'Offers a unique, high-value service that sets a facility apart.'],
-              ['Staff Efficiency', 'Structured activity with minimal staff overhead — Wissums handles the technology.'],
+              ['Staff Efficiency', `Structured activity with minimal staff overhead — ${BRAND.name} handles the technology.`],
             ].map(([title, desc]) => (
               <div key={title} style={{ display: 'flex', gap: 12, padding: '10px 14px', borderRadius: 10, background: 'rgba(139,46,59,0.06)', border: '1px solid rgba(139,46,59,0.12)' }}>
                 <div style={{ fontSize: 9, fontWeight: 900, letterSpacing: '.15em', textTransform: 'uppercase', color: 'rgba(139,46,59,0.7)', flexShrink: 0, paddingTop: 2, minWidth: 130 }}>{title}</div>
@@ -381,7 +382,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
         {!persona ? (
           <>
             <div className="r2" style={{ width:'100%', marginBottom:8, textAlign:'center' }}>
-              <p style={{ fontSize:8, fontWeight:900, letterSpacing:'.44em', textTransform:'uppercase', color:'rgba(196,151,59,0.4)', marginBottom:10 }}>How will you use Wissums?</p>
+              <p style={{ fontSize:8, fontWeight:900, letterSpacing:'.44em', textTransform:'uppercase', color:'rgba(196,151,59,0.4)', marginBottom:10 }}>How will you use {BRAND.name}?</p>
             </div>
             <div className="r3" style={{ width:'100%', display:'flex', flexDirection:'column', gap:12, marginBottom:32 }}>
               {PERSONAS.map((p, i) => (
