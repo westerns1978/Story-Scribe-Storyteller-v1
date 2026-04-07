@@ -89,7 +89,7 @@ const CinematicReveal: React.FC<CinematicRevealProps> = ({
   const [allDone, setAllDone] = useState(false);
   const [showNarrationText, setShowNarrationText] = useState(false);
   const [showTapOverlay, setShowTapOverlay] = useState(autoPlay);
-  const [musicVolume, setMusicVolume] = useState(0.25);
+  const [musicVolume, setMusicVolume] = useState(0.15);
   const [musicPaused, setMusicPaused] = useState(false);
 
   const narrationTextTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -175,12 +175,19 @@ const CinematicReveal: React.FC<CinematicRevealProps> = ({
     } catch { return null; }
   }, [scenes, narratorVoice, story]);
 
+  const stopNarrationRef = useRef<(() => void) | null>(null);
+
   const playScene = useCallback(async (idx: number) => {
     if (idx >= totalScenes) {
       setAllDone(true); setIsPlaying(false); fadeMusic(0, 3000);
       if (onComplete) setTimeout(onComplete, 4000);
       return;
     }
+
+    // Stop any previous narration before starting the new scene — one voice at a time
+    if (stopNarrationRef.current) { try { stopNarrationRef.current(); } catch {} stopNarrationRef.current = null; }
+    if (activeAudioCtxRef.current) { try { activeAudioCtxRef.current.close(); } catch {} activeAudioCtxRef.current = null; }
+
     setCurrentScene(idx); setSceneProgress(0); setPreparingScene(false);
     if (sceneTimerRef.current) clearTimeout(sceneTimerRef.current);
     if (progressTimerRef.current) clearInterval(progressTimerRef.current);
@@ -194,27 +201,28 @@ const CinematicReveal: React.FC<CinematicRevealProps> = ({
     setLoadingNarration(false);
     setNarrationReady(!!narResult);
 
-    let sceneDuration = 9000;
+    const MIN_SCENE_MS = 8000;
+    let sceneDuration = MIN_SCENE_MS;
     if (narResult) {
       if (musicRef.current && !musicRef.current.paused) fadeMusic(0.08, 800);
-      let stopNarration: (() => void) | null = null;
       await new Promise<void>(resolve => {
-        stopNarration = playAudioBuffer(narResult.audioBuffer, narResult.audioContext, { onEnded: resolve, gainValue: 1.0, skipGlobalTrack: true });
+        stopNarrationRef.current = playAudioBuffer(narResult.audioBuffer, narResult.audioContext, { onEnded: resolve, gainValue: 1.0, skipGlobalTrack: true });
         activeAudioCtxRef.current = narResult.audioContext;
         sceneStartTimeRef.current = narResult.audioContext.currentTime;
         setTimeout(resolve, 60000);
       });
       activeAudioCtxRef.current = null;
-      if (stopNarration) { try { (stopNarration as () => void)(); } catch {} }
-      if (musicRef.current && !musicRef.current.paused) fadeMusic(0.25, 1000);
-      sceneDuration = 2000;
+      stopNarrationRef.current = null;
+      if (musicRef.current && !musicRef.current.paused) fadeMusic(0.15, 1000);
+      // Ensure minimum 8s per scene even if narration is shorter
+      const narDurationMs = (narResult.audioBuffer.duration || 8) * 1000;
+      sceneDuration = Math.max(MIN_SCENE_MS, narDurationMs + 2000);
     }
 
-    const duration = narResult ? (narResult.audioBuffer.duration || 8) * 1000 + 2000 : sceneDuration;
     let elapsed = 0;
     progressTimerRef.current = setInterval(() => {
       elapsed += 100;
-      setSceneProgress(Math.min(100, (elapsed / duration) * 100));
+      setSceneProgress(Math.min(100, (elapsed / sceneDuration) * 100));
     }, 100);
     sceneTimerRef.current = setTimeout(() => {
       if (progressTimerRef.current) clearInterval(progressTimerRef.current);
@@ -237,7 +245,7 @@ const CinematicReveal: React.FC<CinematicRevealProps> = ({
           audio.loop = true; audio.volume = 0; audio.preload = 'auto';
           musicRef.current = audio;
           await audio.play();
-          fadeMusic(0.25, 2000);
+          fadeMusic(0.15, 2000);
         }
       } catch (e) { console.warn('[CinematicReveal] Background music unavailable:', e); }
     })();
@@ -270,6 +278,7 @@ const CinematicReveal: React.FC<CinematicRevealProps> = ({
   }, [isPlaying, isPaused]);
 
   const handleStop = useCallback(() => {
+    if (stopNarrationRef.current) { try { stopNarrationRef.current(); } catch {} stopNarrationRef.current = null; }
     if (activeAudioCtxRef.current) { try { activeAudioCtxRef.current.close(); } catch {} activeAudioCtxRef.current = null; }
     if (musicRef.current) { musicRef.current.pause(); musicRef.current.src = ''; musicRef.current = null; }
     if (sceneTimerRef.current) clearTimeout(sceneTimerRef.current);
@@ -405,6 +414,36 @@ const CinematicReveal: React.FC<CinematicRevealProps> = ({
         </div>
       )}
 
+      {/* Tap-to-advance zones: left = prev, right = next */}
+      {isPlaying && (
+        <>
+          <div className="absolute top-12 bottom-10 left-0 z-15" style={{ width: '30%' }}
+            onClick={e => { e.stopPropagation(); if (currentScene > 0) handleSkipPrev(); }} />
+          <div className="absolute top-12 bottom-10 right-0 z-15" style={{ width: '30%' }}
+            onClick={e => { e.stopPropagation(); handleSkipNext(); }} />
+        </>
+      )}
+
+      {/* Centered play button — visible when not playing */}
+      {!isPlaying && !preparingScene && !allDone && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center" onClick={e => { e.stopPropagation(); handlePlay(); }} style={{ cursor: 'pointer' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, animation: 'fadeInUp 0.5s ease-out' }}>
+            <div style={{
+              width: 88, height: 88, borderRadius: '50%',
+              border: '1.5px solid rgba(196,151,59,0.5)',
+              background: 'rgba(196,151,59,0.1)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              animation: 'pulse-ring 2s ease-in-out infinite',
+            }}>
+              <span style={{ fontSize: 32, color: 'rgba(196,151,59,0.9)', marginLeft: 5 }}>▶</span>
+            </div>
+            <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.35em', textTransform: 'uppercase', color: 'rgba(196,151,59,0.5)' }}>
+              Tap to play
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Progress rail */}
       <div className="absolute top-12 left-0 right-0 z-30 px-4 flex gap-1">
         {scenes.map((_, i) => (
@@ -456,7 +495,7 @@ const CinematicReveal: React.FC<CinematicRevealProps> = ({
         {isPlaying && (
           <div className="flex flex-col items-center gap-3">
             <div className="flex items-center gap-2">
-              <span className="text-white/40 text-[9px] font-black uppercase tracking-widest">{currentScene + 1} / {totalScenes}</span>
+              <span className="text-white/50 text-[10px] font-black uppercase tracking-widest">Scene {currentScene + 1} of {totalScenes}</span>
               {loadingNarration && <span className="text-white/40 text-[9px] font-black uppercase tracking-widest animate-pulse">· preparing…</span>}
             </div>
             <div className="flex items-center gap-4">
@@ -524,6 +563,7 @@ const CinematicReveal: React.FC<CinematicRevealProps> = ({
         @keyframes kenBurns{0%{transform:scale(1.0)}100%{transform:scale(1.25)}}
         @keyframes dotPulse{0%,100%{opacity:0.3;transform:scale(0.85)}50%{opacity:1;transform:scale(1.1)}}
         @keyframes fadeInUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes pulse-ring{0%,100%{transform:scale(1);opacity:.6}50%{transform:scale(1.12);opacity:1}}
         .animate-fade-in{animation:fadeInUp 0.4s ease-out forwards}
       `}</style>
     </div>

@@ -66,6 +66,7 @@ const App: React.FC = () => {
     importedTexts: [],
   });
   const [activeStory, setActiveStory] = useState<ActiveStory | null>(null);
+  const [storyFromShelf, setStoryFromShelf] = useState(false);
   const [progressStage, setProgressStage] = useState(0);
 
   const [adminActiveView, setAdminActiveView] = useState<string>('welcome');
@@ -128,6 +129,7 @@ const App: React.FC = () => {
       const pathMatch = window.location.pathname.match(/^\/story\/(.+)/);
       const storyId = pathMatch ? pathMatch[1] : params.get('story');
       if (storyId) {
+        // Keep the clean /story/:id URL so it's bookmarkable; only strip query-param variant
         if (!pathMatch) window.history.replaceState({}, '', window.location.pathname);
         setIsLoadingShared(true);
         try {
@@ -210,6 +212,7 @@ const App: React.FC = () => {
       const story = await loadStoryFromVault(sessionId);
       if (story) {
         setActiveStory(story);
+        setStoryFromShelf(true);
         setSubject(story.storytellerName || '');
         setPhase('story');
       }
@@ -332,6 +335,7 @@ const App: React.FC = () => {
       }
 
       setActiveStory(newStory);
+      setStoryFromShelf(false);
       setTimeout(() => setPhase('story'), 1500);
     } catch (error: any) {
       console.error('Story creation failed:', error);
@@ -586,7 +590,7 @@ const App: React.FC = () => {
                 onBack={() => setPhase('welcome')}
                 onRefineNarrative={handleRefineNarrative}
                 onShare={() => handleShareStory(activeStory)}
-                autoPlayCinematic={true}
+                autoPlayCinematic={!storyFromShelf}
                 paidTier={paidTier}
               />
             </motion.div>

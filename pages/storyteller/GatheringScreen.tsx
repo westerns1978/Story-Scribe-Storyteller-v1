@@ -142,6 +142,14 @@ const AssetThumb: React.FC<{ asset: NeuralAsset; onRemove: (id: string) => void;
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
+const MOOD_OPTIONS = [
+  { value: 'peaceful calm contemplative slow', label: 'Peaceful', icon: '🌿' },
+  { value: 'cinematic epic orchestral inspiring', label: 'Cinematic', icon: '🎬' },
+  { value: 'hopeful inspiring uplifting warm', label: 'Uplifting', icon: '☀️' },
+  { value: 'reflective nostalgic emotional memory', label: 'Reflective', icon: '🪞' },
+  { value: 'tender soft gentle intimate quiet', label: 'Tender', icon: '🕊️' },
+] as const;
+
 const GatheringScreen: React.FC<GatheringScreenProps> = ({
   subject, material, persona = 'curator', onTalk, onPhotos, onText, onRemoveArtifact, onRemoveText, onCreate, onExit, petMode = false,
 }) => {
@@ -153,6 +161,7 @@ const GatheringScreen: React.FC<GatheringScreenProps> = ({
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [connieMessage, setConnieMessage] = useState('');
   const [isConnieTyping, setIsConnieTyping] = useState(true);
+  const [selectedMood, setSelectedMood] = useState(MOOD_OPTIONS[3].value); // default: Reflective
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -395,8 +404,7 @@ const GatheringScreen: React.FC<GatheringScreenProps> = ({
     if (allVerifiedFacts.length > 0) {
       onText('Verified Photo Facts', `[VERIFIED FACTS FROM PHOTOS — USE VERBATIM]\n${allVerifiedFacts.map((f, i) => `${i + 1}. ${f}`).join('\n')}`);
     }
-    // AI decides tone & style — no manual picker
-    onCreate(undefined, '', 'reflective nostalgic emotional', 'naturalistic, authentic period photography', petMode, allVerifiedFacts);
+    onCreate(undefined, '', selectedMood, 'naturalistic, authentic period photography', petMode, allVerifiedFacts);
   };
 
   return (
@@ -525,6 +533,41 @@ const GatheringScreen: React.FC<GatheringScreenProps> = ({
           <div style={{ textAlign: 'center', padding: '12px 0',
             fontSize: 13, color: 'rgba(196,151,59,0.6)', fontStyle: 'italic', fontFamily: 'Georgia,serif' }}>
             {isUploading ? 'Uploading…' : 'Analyzing photos…'}
+          </div>
+        )}
+
+        {/* ── Mood selector ── */}
+        {totalMaterials > 0 && (
+          <div style={{ marginBottom: 24 }}>
+            <div style={{ fontSize: 11, fontFamily: 'system-ui', fontWeight: 700,
+              letterSpacing: '0.2em', textTransform: 'uppercase',
+              color: 'rgba(255,255,255,0.3)', marginBottom: 10 }}>
+              Music mood
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {MOOD_OPTIONS.map(mood => (
+                <button
+                  key={mood.label}
+                  onClick={() => setSelectedMood(mood.value)}
+                  style={{
+                    padding: '8px 14px', borderRadius: 20, fontSize: 13,
+                    fontFamily: 'system-ui', cursor: 'pointer', transition: 'all 0.18s',
+                    border: selectedMood === mood.value
+                      ? '1.5px solid rgba(196,151,59,0.6)'
+                      : '1px solid rgba(255,255,255,0.1)',
+                    background: selectedMood === mood.value
+                      ? 'rgba(196,151,59,0.12)'
+                      : 'rgba(255,255,255,0.04)',
+                    color: selectedMood === mood.value
+                      ? 'rgba(196,151,59,0.9)'
+                      : 'rgba(255,255,255,0.5)',
+                    display: 'flex', alignItems: 'center', gap: 6,
+                  }}
+                >
+                  <span>{mood.icon}</span> {mood.label}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
