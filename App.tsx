@@ -4,6 +4,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import { Customer, ActiveStory, StoryArchiveItem, NeuralAsset } from './types';
 import { generateStoryWithMagic } from './services/api';
 import { WissumsLanding } from './components/WissumsLanding';
+import { LandingGate } from './components/LandingGate';
 import StoryLoadingCinema from './components/StoryLoadingCinema';
 import { usePersistentSession } from './hooks/usePersistentSession';
 import { checkElderlyMode, enableElderlyMode } from './utils/accessibility';
