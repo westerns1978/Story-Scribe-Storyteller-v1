@@ -8,25 +8,20 @@ interface WissumsLandingProps {
 
 const EXAMPLE_PETS = [
   {
-    name: 'Buddy',
-    type: 'Golden Retriever',
-    quote: '"He had this way of putting his head on your lap at exactly the moment you needed it most."',
-    emoji: '\uD83D\uDC36',
+    name: 'Porky',
+    type: 'Bearded Dragon',
+    quote: '"He\'d close his eyes when you rubbed under his chin — this tiny dinosaur who trusted you completely."',
+    sessionId: '265c587f-7803-4410-926d-2298af9c4642',
+    emoji: '\uD83E\uDD8E',
     color: 'rgba(196,151,59,0.2)',
   },
   {
-    name: 'Whiskers',
-    type: 'Tabby Cat',
-    quote: '"She\'d knock things off the counter just to watch you pick them up. Every. Single. Day."',
-    emoji: '\uD83D\uDC31',
+    name: 'Pork Chop',
+    type: 'Beloved Companion',
+    quote: '"Some souls are too big for one lifetime. Pork Chop lived like every day was a gift — because to us, it was."',
+    sessionId: '79438cba-0274-4552-8469-06aaaf3015b6',
+    emoji: '\uD83D\uDC3E',
     color: 'rgba(139,46,59,0.2)',
-  },
-  {
-    name: 'Scout',
-    type: 'Quarter Horse',
-    quote: '"When she ran, it looked like the field was moving under her and she was standing still."',
-    emoji: '\uD83D\uDC34',
-    color: 'rgba(107,142,122,0.2)',
   },
 ];
 
@@ -79,7 +74,7 @@ export const WissumsLanding: React.FC<WissumsLandingProps> = ({ onSelectTier, is
 
         {/* Portrait + Wordmark */}
         <div className="wl-up1" style={{ textAlign: 'center', marginBottom: 48 }}>
-          <div style={{ width: 96, height: 96, borderRadius: '50%', margin: '0 auto 16px', overflow: 'hidden', border: '2px solid rgba(196,151,59,0.3)', boxShadow: '0 0 48px rgba(196,151,59,0.1), 0 8px 30px rgba(0,0,0,0.6)' }}>
+          <div style={{ width: 240, height: 240, borderRadius: '50%', margin: '0 auto 16px', overflow: 'hidden', border: '2px solid rgba(196,151,59,0.3)', boxShadow: '0 0 60px rgba(196,151,59,0.4), 0 8px 30px rgba(0,0,0,0.6)' }}>
             <img src={WISSUMS_PORTRAIT} alt={BRAND.agentName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
@@ -228,16 +223,29 @@ export const WissumsLanding: React.FC<WissumsLandingProps> = ({ onSelectTier, is
           </h2>
           <div style={{ display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap' }}>
             {[
-              { step: '1', title: 'Choose your plan', desc: 'Basic story or full memory book', icon: '\u2728' },
-              { step: '2', title: `Talk to ${BRAND.agentName}`, desc: 'Share memories of your pet', icon: '\uD83C\uDF99\uFE0F' },
-              { step: '3', title: 'Get your story', desc: 'Cinematic tribute in minutes', icon: '\uD83C\uDFAC' },
+              { step: '1', title: 'Choose your plan', desc: 'Basic story or full memory book', icon: (
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M12 2C10.34 2 9 3.34 9 5C9 6.66 10.34 8 12 8C13.66 8 15 6.66 15 5C15 3.34 13.66 2 12 2ZM5.5 5C4.12 5 3 6.12 3 7.5C3 8.88 4.12 10 5.5 10C6.88 10 8 8.88 8 7.5C8 6.12 6.88 5 5.5 5ZM18.5 5C17.12 5 16 6.12 16 7.5C16 8.88 17.12 10 18.5 10C19.88 10 21 8.88 21 7.5C21 6.12 19.88 5 18.5 5ZM12 10C9.79 10 8 12.24 8 15C8 17 9.5 22 12 22C14.5 22 16 17 16 15C16 12.24 14.21 10 12 10ZM5 12C3.34 12 2 13.79 2 16C2 17.5 3 20 5 20C7 20 8 17.5 8 16C8 15.26 7.83 14.57 7.54 13.97C6.76 12.76 5.96 12 5 12ZM19 12C18.04 12 17.24 12.76 16.46 13.97C16.17 14.57 16 15.26 16 16C16 17.5 17 20 19 20C21 20 22 17.5 22 16C22 13.79 20.66 12 19 12Z" fill="#C4973B"/>
+                </svg>
+              )},
+              { step: '2', title: `Talk to ${BRAND.agentName}`, desc: 'Share memories of your pet', icon: (
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M12 14C13.66 14 15 12.66 15 11V5C15 3.34 13.66 2 12 2C10.34 2 9 3.34 9 5V11C9 12.66 10.34 14 12 14ZM17.3 11C17.3 14 14.76 16.1 12 16.1C9.24 16.1 6.7 14 6.7 11H5C5 14.41 7.72 17.23 11 17.72V21H13V17.72C16.28 17.23 19 14.41 19 11H17.3Z" fill="#C4973B"/>
+                </svg>
+              )},
+              { step: '3', title: 'Get your story', desc: 'Cinematic tribute in minutes', icon: (
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M8 5V19L19 12L8 5Z" fill="#C4973B"/>
+                  <rect x="2" y="3" width="20" height="18" rx="3" stroke="#C4973B" strokeWidth="1.5" fill="none"/>
+                </svg>
+              )},
             ].map(item => (
               <div key={item.step} style={{
                 flex: '1 1 160px', maxWidth: 200, textAlign: 'center', padding: '20px 16px',
                 background: 'rgba(255,255,255,0.025)', borderRadius: 14,
                 border: '1px solid rgba(255,255,255,0.06)',
               }}>
-                <div style={{ fontSize: 28, marginBottom: 10 }}>{item.icon}</div>
+                <div style={{ marginBottom: 10, display: 'flex', justifyContent: 'center' }}>{item.icon}</div>
                 <div style={{ fontWeight: 900, fontSize: 10, letterSpacing: '0.3em', textTransform: 'uppercase', color: 'rgba(196,151,59,0.6)', marginBottom: 6 }}>
                   Step {item.step}
                 </div>
@@ -278,10 +286,27 @@ export const WissumsLanding: React.FC<WissumsLandingProps> = ({ onSelectTier, is
                   </div>
                   <p style={{
                     fontFamily: 'Georgia, serif', fontStyle: 'italic',
-                    fontSize: 13, color: 'rgba(245,236,215,0.55)', lineHeight: 1.65, margin: 0,
+                    fontSize: 13, color: 'rgba(245,236,215,0.55)', lineHeight: 1.65, margin: '0 0 12px',
                   }}>
                     {pet.quote}
                   </p>
+                  <a
+                    href={`https://gen-lang-client-0121881478.web.app/?story=${pet.sessionId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                      fontSize: 10, fontWeight: 900, letterSpacing: '0.15em', textTransform: 'uppercase',
+                      color: '#C4973B', textDecoration: 'none',
+                      padding: '6px 14px', borderRadius: 12,
+                      background: 'rgba(196,151,59,0.1)', border: '1px solid rgba(196,151,59,0.25)',
+                      transition: 'all 0.2s',
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(196,151,59,0.2)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'rgba(196,151,59,0.1)'; }}
+                  >
+                    Watch Story →
+                  </a>
                 </div>
               </div>
             ))}
