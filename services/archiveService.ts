@@ -133,7 +133,7 @@ export async function getArchivedStories(retryDelayMs = 0): Promise<StoryArchive
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     const { data, error } = await supabase
       .from('storyscribe_stories')
-      .select('session_id, storyteller_name, title, status, created_at, saved_at, narrative, extraction, storyboard, assets')
+      .select('session_id, storyteller_name, title, status, created_at, saved_at, narrative, extraction, storyboard, assets, narration_audio')
       .eq('org_id', '71077b47-66e8-4fd9-90e7-709773ea6582')
       .eq('status', 'complete')
       .order('created_at', { ascending: false })
@@ -156,6 +156,7 @@ export async function getArchivedStories(retryDelayMs = 0): Promise<StoryArchive
           generatedImages: row.assets?.images || [],
           artifacts: ext?.artifacts || [],
           background_music_url: row.background_music_url,
+          narration_audio: row.narration_audio || [],
           savedAt: row.saved_at || row.created_at,
         } as StoryArchiveItem;
       });
@@ -232,6 +233,7 @@ export async function loadStory(sessionId: string): Promise<StoryArchiveItem | n
         storyboard,
         generatedImages: data.assets?.images || [],
         beatAudio: data.assets?.audio || [],
+        narration_audio: data.narration_audio || [],
         artifacts: data.extraction?.artifacts || [],
         background_music_url: data.background_music_url || '',
         savedAt: data.saved_at || data.created_at,
