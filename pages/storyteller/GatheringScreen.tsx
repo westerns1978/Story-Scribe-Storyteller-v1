@@ -150,6 +150,25 @@ const MOOD_OPTIONS = [
   { value: 'tender soft gentle intimate quiet', label: 'Tender', icon: '🕊️' },
 ] as const;
 
+const NARRATIVE_STYLE_OPTIONS = [
+  { value: 'cinematic', label: 'Cinematic', icon: '🎬' },
+  { value: 'non-linear memory', label: 'Non-Linear Memory', icon: '🌀' },
+  { value: 'poetic & soulful', label: 'Poetic & Soulful', icon: '🪶' },
+  { value: 'adventurous saga', label: 'Adventurous Saga', icon: '⚔️' },
+  { value: 'intimate letter', label: 'Intimate Letter', icon: '✉️' },
+  { value: 'oral tradition', label: 'Oral Tradition', icon: '🗣️' },
+  { value: 'eloquent biographical', label: 'Eloquent Biographical', icon: '📖' },
+  { value: 'journalistic', label: 'Journalistic', icon: '📰' },
+] as const;
+
+const VISUAL_STYLE_OPTIONS = [
+  { value: 'cinematic', label: 'Cinematic', desc: 'painterly, dramatic', icon: '🎥' },
+  { value: 'vintage', label: 'Vintage', desc: 'warm, period-accurate', icon: '📷' },
+  { value: 'watercolor', label: 'Watercolor', desc: 'soft, artistic', icon: '🎨' },
+  { value: 'documentary', label: 'Documentary', desc: 'realistic, grounded', icon: '🎞️' },
+  { value: 'illustrated', label: 'Illustrated', desc: 'storybook style', icon: '✏️' },
+] as const;
+
 const GatheringScreen: React.FC<GatheringScreenProps> = ({
   subject, material, persona = 'curator', onTalk, onPhotos, onText, onRemoveArtifact, onRemoveText, onCreate, onExit, petMode = false,
 }) => {
@@ -162,6 +181,8 @@ const GatheringScreen: React.FC<GatheringScreenProps> = ({
   const [connieMessage, setConnieMessage] = useState('');
   const [isConnieTyping, setIsConnieTyping] = useState(true);
   const [selectedMood, setSelectedMood] = useState(MOOD_OPTIONS[3].value); // default: Reflective
+  const [selectedNarrativeStyle, setSelectedNarrativeStyle] = useState('eloquent biographical');
+  const [selectedVisualStyle, setSelectedVisualStyle] = useState('cinematic');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -411,7 +432,7 @@ const GatheringScreen: React.FC<GatheringScreenProps> = ({
     if (allVerifiedFacts.length > 0) {
       onText('Verified Photo Facts', `[VERIFIED FACTS FROM PHOTOS — USE VERBATIM]\n${allVerifiedFacts.map((f, i) => `${i + 1}. ${f}`).join('\n')}`);
     }
-    onCreate(undefined, '', selectedMood, 'naturalistic, authentic period photography', petMode, allVerifiedFacts);
+    onCreate(undefined, selectedNarrativeStyle, selectedMood, selectedVisualStyle, petMode, allVerifiedFacts);
   };
 
   return (
@@ -577,6 +598,73 @@ const GatheringScreen: React.FC<GatheringScreenProps> = ({
             </div>
           </div>
         )}
+
+        {/* ── Narrative style selector ── */}
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ fontSize: 11, fontFamily: 'system-ui', fontWeight: 700,
+            letterSpacing: '0.2em', textTransform: 'uppercase',
+            color: 'rgba(255,255,255,0.3)', marginBottom: 10 }}>
+            Narrative style
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {NARRATIVE_STYLE_OPTIONS.map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => setSelectedNarrativeStyle(opt.value)}
+                style={{
+                  padding: '8px 14px', borderRadius: 20, fontSize: 13,
+                  fontFamily: 'system-ui', cursor: 'pointer', transition: 'all 0.18s',
+                  border: selectedNarrativeStyle === opt.value
+                    ? '1.5px solid rgba(196,151,59,0.6)'
+                    : '1px solid rgba(255,255,255,0.1)',
+                  background: selectedNarrativeStyle === opt.value
+                    ? 'rgba(196,151,59,0.12)'
+                    : 'rgba(255,255,255,0.04)',
+                  color: selectedNarrativeStyle === opt.value
+                    ? 'rgba(196,151,59,0.9)'
+                    : 'rgba(255,255,255,0.5)',
+                  display: 'flex', alignItems: 'center', gap: 6,
+                }}
+              >
+                <span>{opt.icon}</span> {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Visual style selector ── */}
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ fontSize: 11, fontFamily: 'system-ui', fontWeight: 700,
+            letterSpacing: '0.2em', textTransform: 'uppercase',
+            color: 'rgba(255,255,255,0.3)', marginBottom: 10 }}>
+            Visual style
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {VISUAL_STYLE_OPTIONS.map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => setSelectedVisualStyle(opt.value)}
+                style={{
+                  padding: '8px 14px', borderRadius: 20, fontSize: 13,
+                  fontFamily: 'system-ui', cursor: 'pointer', transition: 'all 0.18s',
+                  border: selectedVisualStyle === opt.value
+                    ? '1.5px solid rgba(196,151,59,0.6)'
+                    : '1px solid rgba(255,255,255,0.1)',
+                  background: selectedVisualStyle === opt.value
+                    ? 'rgba(196,151,59,0.12)'
+                    : 'rgba(255,255,255,0.04)',
+                  color: selectedVisualStyle === opt.value
+                    ? 'rgba(196,151,59,0.9)'
+                    : 'rgba(255,255,255,0.5)',
+                  display: 'flex', alignItems: 'center', gap: 6,
+                }}
+              >
+                <span>{opt.icon}</span> {opt.label}
+                <span style={{ fontSize: 11, opacity: 0.6 }}>· {opt.desc}</span>
+              </button>
+            ))}
+          </div>
+        </div>
 
         {/* IntakeAgent readiness — keeper only, encourages richer material */}
         {totalMaterials > 0 && persona === 'keeper' && (
