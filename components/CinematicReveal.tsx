@@ -178,12 +178,24 @@ const CinematicReveal: React.FC<CinematicRevealProps> = ({
 
   // ── Pre-fetch narration for scenes 0 and 1 on mount ──────────────────────
   // Eliminates the 20-30s startup delay when user clicks play
+  const scenesReady = scenes.length > 0;
   useEffect(() => {
-    if (scenes.length > 0) {
-      fetchNarration(0).catch(() => {});
-      if (scenes.length > 1) fetchNarration(1).catch(() => {});
+    if (!scenesReady) return;
+    console.log('[CinematicReveal] Pre-fetching scene 0 narration...');
+    fetchNarration(0).then(result => {
+      console.log('[CinematicReveal] Scene 0 narration pre-fetch', result ? 'CACHED ✓' : 'FAILED ✗');
+    }).catch(() => {
+      console.log('[CinematicReveal] Scene 0 narration pre-fetch FAILED ✗');
+    });
+    if (scenes.length > 1) {
+      console.log('[CinematicReveal] Pre-fetching scene 1 narration...');
+      fetchNarration(1).then(result => {
+        console.log('[CinematicReveal] Scene 1 narration pre-fetch', result ? 'CACHED ✓' : 'FAILED ✗');
+      }).catch(() => {
+        console.log('[CinematicReveal] Scene 1 narration pre-fetch FAILED ✗');
+      });
     }
-  }, [scenes.length, fetchNarration]);
+  }, [scenesReady, fetchNarration]);
 
   const playScene = useCallback(async (idx: number) => {
     if (idx >= totalScenes) {
