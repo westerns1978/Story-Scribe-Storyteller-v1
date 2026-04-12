@@ -61,6 +61,7 @@ export const YourStoryScreen: React.FC<YourStoryScreenProps> = ({
   const [speakingQuote, setSpeakingQuote] = useState<number | null>(null);
   const [timeCapsuleYear, setTimeCapsuleYear] = useState<string | null>(null);
   const [timeCapsuleLocation, setTimeCapsuleLocation] = useState<string | undefined>(undefined);
+  const [showValidationIssues, setShowValidationIssues] = useState(false);
 
   // ── Image editing state ───────────────────────────────────────────────────
   const [sceneToEdit, setSceneToEdit] = useState<SceneToEdit | null>(null);
@@ -253,9 +254,62 @@ export const YourStoryScreen: React.FC<YourStoryScreenProps> = ({
       <div className="flex-shrink-0 bg-heritage-cream border-b border-heritage-parchment px-4 pt-4 pb-0">
         <div className="flex items-center justify-between mb-3 px-2">
           <button onClick={() => setViewMode('cinematic')} title="Watch the cinematic story" className="flex items-center justify-center w-7 h-7 rounded-full text-heritage-warmGold hover:bg-heritage-warmGold/10 transition-all" style={{ border: '1px solid rgba(196,151,59,0.3)' }}>▶</button>
-          <h2 className="text-sm font-display font-black text-heritage-ink tracking-tight truncate max-w-[160px]">
-            {storytellerName}'s {(story as any).petMode ? 'Tribute' : 'Legacy'}
-          </h2>
+          <div className="flex items-center gap-2 min-w-0">
+            <h2 className="text-sm font-display font-black text-heritage-ink tracking-tight truncate max-w-[160px]">
+              {storytellerName}'s {(story as any).petMode ? 'Tribute' : 'Legacy'}
+            </h2>
+            {story.validation?.accuracy_score != null && (() => {
+              const score = story.validation.accuracy_score;
+              const issues = story.validation.issues || [];
+              const level = score >= 80 ? 'high' : score >= 60 ? 'good' : 'low';
+              const colors = {
+                high: { bg: 'rgba(34,139,34,0.12)', border: 'rgba(34,139,34,0.4)', text: '#2E7D32' },
+                good: { bg: 'rgba(196,151,59,0.12)', border: 'rgba(196,151,59,0.4)', text: '#C4973B' },
+                low:  { bg: 'rgba(139,46,59,0.12)', border: 'rgba(139,46,59,0.4)', text: '#8B2E3B' },
+              };
+              const labels = { high: 'High Believability', good: 'Good', low: 'Review Suggested' };
+              const c = colors[level];
+              return (
+                <div className="relative flex-shrink-0">
+                  <button
+                    onClick={() => issues.length > 0 && setShowValidationIssues(v => !v)}
+                    style={{
+                      padding: '3px 10px', borderRadius: 12, fontSize: 9, fontWeight: 900,
+                      letterSpacing: '0.05em', textTransform: 'uppercase',
+                      background: c.bg, border: `1px solid ${c.border}`, color: c.text,
+                      cursor: issues.length > 0 ? 'pointer' : 'default',
+                      display: 'flex', alignItems: 'center', gap: 4,
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    {score}% · {labels[level]}
+                    {issues.length > 0 && <span style={{ fontSize: 8, opacity: 0.6 }}>{showValidationIssues ? '▲' : '▼'}</span>}
+                  </button>
+                  {showValidationIssues && issues.length > 0 && (
+                    <div style={{
+                      position: 'absolute', top: '100%', right: 0, marginTop: 6,
+                      width: 280, padding: '12px 14px', borderRadius: 12,
+                      background: '#1A1410', border: '1px solid rgba(196,151,59,0.2)',
+                      boxShadow: '0 8px 32px rgba(0,0,0,0.5)', zIndex: 100,
+                    }}>
+                      <div style={{ fontSize: 9, fontWeight: 900, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(196,151,59,0.5)', marginBottom: 8 }}>
+                        Validation Issues
+                      </div>
+                      {issues.map((issue, i) => (
+                        <div key={i} style={{
+                          fontSize: 12, color: 'rgba(253,246,236,0.7)', fontFamily: 'Georgia, serif',
+                          fontStyle: 'italic', lineHeight: 1.5, padding: '4px 0',
+                          borderTop: i > 0 ? '1px solid rgba(255,255,255,0.05)' : 'none',
+                        }}>
+                          {issue}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
           <div className="flex items-center gap-2">
             {onViewShelf && <button onClick={onViewShelf} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest text-heritage-burgundy hover:bg-heritage-burgundy hover:text-white transition-all border border-heritage-burgundy/40">📚 Archive</button>}
             <button onClick={handleShareWithFamily} className="text-[9px] font-black uppercase tracking-widest text-heritage-inkMuted hover:text-heritage-burgundy transition-colors">

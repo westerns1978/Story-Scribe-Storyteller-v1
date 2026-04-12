@@ -172,6 +172,11 @@ const App: React.FC = () => {
     if (paidTier) sessionStorage.setItem('wissums_tier', paidTier);
   }, [paidTier]);
 
+  // ── Auto-redirect landing → welcome once paid ─────────────────────────────
+  useEffect(() => {
+    if (phase === 'landing' && paidTier) setPhase('welcome');
+  }, [phase, paidTier]);
+
   // ── Stripe checkout handler ────────────────────────────────────────────────
   const handleSelectTier = useCallback(async (tier: Tier) => {
     setCheckoutLoading(true);
@@ -192,7 +197,7 @@ const App: React.FC = () => {
     setSubject(name || '');
     setLanguage(lang || 'en');
     setNarratorVoice(voice);
-    setPetMode(true);
+    setPetMode(isPet);
     setPersona(selectedPersona);
     setMaterial({ transcript: '', artifacts: [], importedTexts: [] });
     setActiveStory(null);
@@ -302,7 +307,7 @@ const App: React.FC = () => {
           if (step === 'agent_director') setProgressStage(3);
         },
         artifactData, narrativeStyle || 'Cinematic (Non-Linear)', photoGrounding,
-        musicQuery, imagePalette, language, true, // always pet mode
+        musicQuery, imagePalette, language, petMode,
         verifiedPhotoFacts, uploadedPhotos
       );
 
@@ -321,8 +326,9 @@ const App: React.FC = () => {
           ...(response.artifacts || response.extraction?.artifacts || []),
         ],
         beatAudio: response.beat_audio || [],
-        petMode: true,
+        petMode,
         uploadedPhotos,
+        validation: response.validation || undefined,
       };
 
       try {
@@ -366,6 +372,7 @@ const App: React.FC = () => {
         ...prev,
         narrative: response.narrative || prev.narrative,
         storyboard: response.storyboard || prev.storyboard,
+        validation: response.validation || prev.validation,
       } : prev);
     } catch (err: any) {
       console.error('[Refine] Failed:', err);
@@ -438,6 +445,7 @@ const App: React.FC = () => {
         narrative: response.narrative, extraction: response.extraction,
         generatedImages: response.images || [], savedAt: new Date().toISOString(),
         storyboard: response.storyboard, artifacts: response.artifacts || [],
+        validation: response.validation || undefined,
       };
       await saveStory({ ...newStory, id: newStory.sessionId, name: data.storytellerName, savedAt: new Date().toISOString() } as StoryArchiveItem);
       setActiveStory(newStory);
@@ -535,6 +543,7 @@ const App: React.FC = () => {
                 onViewShelf={() => setPhase('shelf')}
                 savedStories={savedStories}
                 storiesLoading={storiesLoading}
+                initialName={subject || undefined}
                 onLogoTap={() => {
                   let t = (window as any).__adminTap = ((window as any).__adminTap || 0) + 1;
                   if (t >= 5) { (window as any).__adminTap = 0; setPhase('admin'); }
@@ -544,12 +553,7 @@ const App: React.FC = () => {
               />
             </motion.div>
           )}
-          {phase === 'landing' && paidTier && (
-            <motion.div key="redirect-welcome" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
-              {/* Auto-redirect to welcome once paid */}
-              {(() => { setPhase('welcome'); return null; })()}
-            </motion.div>
-          )}
+          {/* Landing → welcome redirect handled by useEffect below */}
           {phase === 'gathering' && (
             <motion.div key="gathering" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
               <GatheringScreen
@@ -563,7 +567,7 @@ const App: React.FC = () => {
                 onRemoveText={handleRemoveText}
                 onCreate={handleCreateStory}
                 onExit={handleRestart}
-                petMode={true}
+                petMode={petMode}
               />
             </motion.div>
           )}

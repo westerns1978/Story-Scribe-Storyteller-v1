@@ -181,6 +181,10 @@ export interface ActiveStory {
   videoPrompts?: string[];
   transcriptSegments?: TranscriptSegment[];
   summary?: string;
+  validation?: {
+    accuracy_score: number;
+    issues?: string[];
+  };
 }
 
 export interface StoryArchiveItem extends ActiveStory {

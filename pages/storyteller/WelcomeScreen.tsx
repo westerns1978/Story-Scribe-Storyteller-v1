@@ -13,6 +13,7 @@ interface WelcomeScreenProps {
   savedStories?: { sessionId: string; storytellerName: string; savedAt: string }[];
   storiesLoading?: boolean;
   onLogoTap?: () => void;
+  initialName?: string;
   // Auth props — all optional, safe if not passed
   supabaseUser?: { id: string; email: string; display_name?: string } | null;
   onSignIn?: () => void;
@@ -301,11 +302,11 @@ const bodyStyle: React.CSSProperties = {
 export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   onBegin, onTalkToConnie, onLogout, onViewStory, onViewShelf,
   savedStories = [], storiesLoading = false, onLogoTap,
-  activeStoryName, onReturnToStory,
+  activeStoryName, onReturnToStory, initialName,
   supabaseUser, onSignIn, onSignOut,
 }) => {
   const [persona, setPersona] = useState<Persona>(null);
-  const [name, setName] = useState('');
+  const [name, setName] = useState(initialName || '');
   const [language, setLanguage] = useState('en');
   const [voice, setVoice] = useState<'Kore' | 'Fenrir'>('Kore');
   const [showOpts, setShowOpts] = useState(false);
