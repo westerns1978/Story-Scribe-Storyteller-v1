@@ -4,6 +4,7 @@ import JSZip from 'jszip';
 import { ActiveStory, StoryArchiveItem } from '../types';
 import XMarkIcon from './icons/XMarkIcon';
 import { BRAND } from '../utils/brandUtils';
+import { formatDisplayNameOrDefault } from '../utils/nameUtils';
 import ShareIcon from './icons/ShareIcon';
 import ImageIcon from './icons/ImageIcon';
 import FilePdfIcon from './icons/FilePdfIcon';
@@ -27,7 +28,7 @@ const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, story, showToa
         return `${window.location.origin}?story=${story.sessionId}`;
     }, [story?.sessionId]);
 
-    const storyTitle = useMemo(() => story?.storytellerName || 'Legacy Story', [story?.storytellerName]);
+    const storyTitle = useMemo(() => formatDisplayNameOrDefault(story?.storytellerName, 'Legacy Story'), [story?.storytellerName]);
 
     if (!isOpen || !story) return null;
 

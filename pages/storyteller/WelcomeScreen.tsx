@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { isWissums, BRAND, CONNIE_PORTRAIT } from '../../utils/brandUtils';
+import { formatDisplayName } from '../../utils/nameUtils';
 
 interface WelcomeScreenProps {
   activeStoryName?: string;
   onReturnToStory?: () => void;
-  onBegin: (name: string, language: string, narratorVoice: 'Kore' | 'Fenrir', petMode?: boolean, persona?: 'curator' | 'keeper' | 'pet') => void;
+  onBegin: (name: string, language: string, narratorVoice: string, petMode?: boolean, persona?: 'curator' | 'keeper' | 'pet') => void;
   onTalkToConnie?: () => void;
   onUploadMemories?: () => void;
   onLogout: () => void;
@@ -308,7 +309,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   const [persona, setPersona] = useState<Persona>(null);
   const [name, setName] = useState(initialName || '');
   const [language, setLanguage] = useState('en');
-  const [voice, setVoice] = useState<'Kore' | 'Fenrir'>('Kore');
+  const [voice, setVoice] = useState<string>('Kore');
   const [showOpts, setShowOpts] = useState(false);
   const [hintIdx, setHintIdx] = useState(0);
   const [hintFade, setHintFade] = useState(true);
@@ -403,7 +404,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
             >
               <div style={{ textAlign:'left' }}>
                 <div style={{ fontSize:8, fontWeight:900, letterSpacing:'.4em', textTransform:'uppercase', color:'rgba(196,151,59,0.5)', marginBottom:4 }}>Continue</div>
-                <div style={{ fontFamily:'Georgia,serif', fontStyle:'italic', fontSize:'.95rem', color:'rgba(245,236,215,0.75)' }}>{activeStoryName}'s Story</div>
+                <div style={{ fontFamily:'Georgia,serif', fontStyle:'italic', fontSize:'.95rem', color:'rgba(245,236,215,0.75)' }}>{formatDisplayName(activeStoryName) || activeStoryName}'s Story</div>
               </div>
               <span style={{ color:'rgba(196,151,59,0.5)', fontSize:'1rem' }}>▶ Resume</span>
             </button>
@@ -530,7 +531,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                   <div>
                     <p style={{ fontSize:8, fontWeight:900, letterSpacing:'.44em', textTransform:'uppercase', color:'rgba(196,151,59,0.4)', marginBottom:10 }}>Narrator Voice</p>
                     <div style={{ display:'flex', gap:10 }}>
-                      {(['Kore','Fenrir'] as const).map(v => (
+                      {(['Kore','Fenrir'] as string[]).map(v => (
                         <button key={v} className={`ws-vbtn${voice===v?(v==='Kore'?' her':' his'):''}`} onClick={() => setVoice(v)}>
                           <div style={{ fontSize:10, fontWeight:900, letterSpacing:'.06em', textTransform:'uppercase', color:'rgba(245,236,215,0.7)', marginBottom:3 }}>{v==='Kore'?'Her Voice':'His Voice'}</div>
                           <div style={{ fontSize:10, fontStyle:'italic', fontFamily:'Georgia,serif', color:'rgba(245,236,215,0.3)' }}>{v==='Kore'?'Warm, intimate':'Deep, resonant'}</div>
@@ -571,7 +572,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                 {savedStories.slice(0, 3).map(s => (
                   <button key={s.sessionId} className="ws-card" onClick={() => onViewStory?.(s.sessionId)}>
                     <div>
-                      <div style={{ fontFamily:'Georgia,serif', fontWeight:700, fontSize:'.92rem', color:'rgba(245,236,215,0.75)', marginBottom:3 }}>{s.storytellerName}</div>
+                      <div style={{ fontFamily:'Georgia,serif', fontWeight:700, fontSize:'.92rem', color:'rgba(245,236,215,0.75)', marginBottom:3 }}>{formatDisplayName(s.storytellerName) || s.storytellerName}</div>
                       <div style={{ fontSize:8, fontWeight:900, letterSpacing:'.35em', textTransform:'uppercase', color:'rgba(245,236,215,0.25)' }}>{new Date(s.savedAt).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div>
                     </div>
                     <span style={{ color:'rgba(196,151,59,0.35)', fontSize:'.7rem' }}>▶</span>

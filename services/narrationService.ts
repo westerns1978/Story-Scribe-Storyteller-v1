@@ -24,10 +24,34 @@ async function pcmBase64ToAudioBuffer(base64: string, sampleRate = 24000): Promi
   return buffer;
 }
 
+// ─── Global failure telemetry ───
+// A running count of successive narrateText calls that returned no audio.
+// CinematicReveal reads this to latch a persistent "Narration unavailable"
+// indicator when the failure is clearly systemic (not a one-off flake).
+// Reset to 0 on the first successful call.
+let _narrationFailureStreak = 0;
+let _lastNarrationFailure: { kind: string; reason: string; at: number } | null = null;
+
+export function getNarrationFailureStreak(): number {
+  return _narrationFailureStreak;
+}
+export function getLastNarrationFailure(): { kind: string; reason: string; at: number } | null {
+  return _lastNarrationFailure;
+}
+export function resetNarrationFailureStreak(): void {
+  _narrationFailureStreak = 0;
+  _lastNarrationFailure = null;
+}
+
+function recordFailure(kind: string, reason: string) {
+  _narrationFailureStreak++;
+  _lastNarrationFailure = { kind, reason, at: Date.now() };
+}
+
 // ─── Main export: narrate text via edge function ───
 export async function narrateText(
   text: string,
-  voiceName = 'Kore'
+  voiceName = 'Aoede'
 ): Promise<{ audioBuffer: AudioBuffer; audioContext: AudioContext } | null> {
   if (!text?.trim()) return null;
 
@@ -42,28 +66,55 @@ export async function narrateText(
       body: JSON.stringify({
         action: 'narrate',
         text: text.trim(),
-        voice_name: voiceName, // matches edge function: const { text, voice_name = 'Kore' } = body
+        voice_name: voiceName, // matches edge function: const { text, voice_name = 'Aoede' } = body
       }),
     });
 
+    // Always read the raw body so we can log it verbatim — the previous
+    // version logged `data` which the console renders as "Object".
+    const rawBody = await response.text();
+    let parsed: any = null;
+    try { parsed = JSON.parse(rawBody); } catch {}
+
     if (!response.ok) {
-      const errText = await response.text();
-      console.error('[narrationService] Edge function error:', response.status, errText);
+      // Edge function now returns 502 with { error, primary_kind, attempts }
+      // on total TTS failure. Extract and log so the user-visible banner
+      // can hint at the root cause (billing / quota / model missing).
+      const kind = parsed?.primary_kind || `HTTP_${response.status}`;
+      const reason = parsed?.error || rawBody.slice(0, 400) || 'no body';
+      console.error(
+        `[narrationService] Edge function error (HTTP ${response.status}, kind=${kind}): ${reason}`,
+        parsed?.attempts ? `| attempts=${JSON.stringify(parsed.attempts)}` : ''
+      );
+      recordFailure(kind, reason);
       return null;
     }
 
-    const data = await response.json();
-
-    if (!data.audio) {
-      console.error('[narrationService] No audio in response:', data);
+    if (!parsed || !parsed.audio) {
+      // 200 with empty/missing audio — same logical failure but different
+      // telemetry path (used to print the useless "Object" log line).
+      const kind = parsed?.primary_kind || 'EMPTY_200';
+      const reason = parsed?.error
+        || `no audio field in response body: ${rawBody.slice(0, 400) || 'empty body'}`;
+      console.error(
+        `[narrationService] No audio in response — kind=${kind}, reason=${reason}, bodyPreview=${rawBody.slice(0, 400)}`,
+        parsed?.attempts ? `| attempts=${JSON.stringify(parsed.attempts)}` : ''
+      );
+      recordFailure(kind, reason);
       return null;
     }
 
     const audioContext = new AudioContext({ sampleRate: 24000 });
-    const audioBuffer = await pcmBase64ToAudioBuffer(data.audio, 24000);
+    const audioBuffer = await pcmBase64ToAudioBuffer(parsed.audio, 24000);
+    // Success — clear the streak so CinematicReveal drops the "Narration
+    // unavailable" indicator if it had been shown.
+    _narrationFailureStreak = 0;
+    _lastNarrationFailure = null;
     return { audioBuffer, audioContext };
-  } catch (err) {
-    console.error('[narrationService] Failed:', err);
+  } catch (err: any) {
+    const reason = err?.message || String(err);
+    console.error('[narrationService] Failed with exception:', reason);
+    recordFailure('EXCEPTION', reason);
     return null;
   }
 }
@@ -117,7 +168,7 @@ export function playAudioBuffer(
 // ─── Narrate + play in one call (used by CinematicReveal) ───
 export async function narrateAndPlay(
   text: string,
-  voiceName = 'Kore',
+  voiceName = 'Aoede',
   options: { onEnded?: () => void; gainValue?: number } = {}
 ): Promise<(() => void) | null> {
   const result = await narrateText(text, voiceName);

@@ -24,19 +24,6 @@ interface TimeCapsuleData {
 }
 
 async function fetchTimeCapsule(year: string, location?: string): Promise<TimeCapsuleData> {
-  const prompt = `You are a historical researcher. Provide a time capsule snapshot for the year ${year}${location ? ` in ${location}` : ''}.
-
-Return ONLY valid JSON with this exact structure:
-{
-  "news": ["3 major world headlines from ${year}"],
-  "culture": ["3 pop culture facts from ${year}"],
-  "music": ["3 popular songs from ${year}"],
-  "prices": ["3 cost-of-living examples from ${year} e.g. 'Gallon of milk: $0.89'"],
-  "context": "A 2-sentence description of what daily life felt like in ${year}"
-}
-
-Be historically accurate. Only return the JSON, no other text.`;
-
   const res = await fetch(STORY_CASCADE_URL, {
     method: 'POST',
     headers: {
@@ -45,19 +32,22 @@ Be historically accurate. Only return the JSON, no other text.`;
       apikey: SUPABASE_ANON_KEY,
     },
     body: JSON.stringify({
-      action: 'connie_chat',
-      system_prompt: 'You are a precise historical researcher. Always respond with valid JSON only.',
-      messages: [{ role: 'user', parts: [{ text: prompt }] }],
-      subject: `time capsule ${year}`,
+      action: 'time_capsule',
+      year,
+      location,
     }),
   });
 
   if (!res.ok) throw new Error(`Failed: ${res.status}`);
   const data = await res.json();
-  const text = data.text || '';
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('No JSON in response');
-  return JSON.parse(match[0]);
+  if (data.error) throw new Error(data.error);
+  return {
+    news: Array.isArray(data.news) ? data.news : [],
+    culture: Array.isArray(data.culture) ? data.culture : [],
+    music: Array.isArray(data.music) ? data.music : [],
+    prices: Array.isArray(data.prices) ? data.prices : [],
+    context: typeof data.context === 'string' ? data.context : '',
+  };
 }
 
 const TimeCapsuleModal: React.FC<TimeCapsuleModalProps> = ({ isOpen, onClose, year, location }) => {

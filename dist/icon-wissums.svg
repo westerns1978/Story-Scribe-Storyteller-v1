@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="40%" r="70%">
+      <stop offset="0%" stop-color="#1A0F07"/>
+      <stop offset="100%" stop-color="#0a0704"/>
+    </radialGradient>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E4B970"/>
+      <stop offset="50%" stop-color="#C4973B"/>
+      <stop offset="100%" stop-color="#8B6B1F"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+  <circle cx="256" cy="256" r="180" fill="none" stroke="url(#gold)" stroke-width="2" opacity="0.3"/>
+  <g filter="url(#glow)">
+    <text x="50%" y="50%" text-anchor="middle" dominant-baseline="central"
+          font-family="Georgia, 'Playfair Display', serif"
+          font-size="260" font-style="italic" font-weight="600"
+          fill="url(#gold)">W</text>
+  </g>
+</svg>

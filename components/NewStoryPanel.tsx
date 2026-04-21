@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ActiveStory, QueueItem, StatusTracker, ProviderStat } from '../types';
+import { formatDisplayName } from '../utils/nameUtils';
 import BookOpenIcon from './icons/BookOpenIcon';
 import NarrativeToolbar from './NarrativeToolbar';
 import VisualStoryboard from './VisualStoryboard';
@@ -304,7 +305,7 @@ const NewStoryPanel: React.FC<NewStoryPanelProps> = (props) => {
         <div className="w-full max-w-7xl mx-auto space-y-10 animate-appear">
             <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 px-1">
                 <div className="text-left w-full md:w-auto">
-                    <h2 className="text-3xl lg:text-5xl font-display font-black text-slate-900 dark:text-white tracking-tighter uppercase mb-1">{props.activeStory?.storytellerName}</h2>
+                    <h2 className="text-3xl lg:text-5xl font-display font-black text-slate-900 dark:text-white tracking-tighter uppercase mb-1">{formatDisplayName(props.activeStory?.storytellerName)}</h2>
                     <div className="flex items-center gap-3">
                         <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse shadow-[0_0_10px_rgba(34,197,94,0.5)]"></span>
                         <p className="text-[10px] font-black text-slate-400 dark:text-white/20 uppercase tracking-widest">Active Production Node</p>

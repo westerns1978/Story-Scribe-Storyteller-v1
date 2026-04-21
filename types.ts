@@ -191,6 +191,8 @@ export interface StoryArchiveItem extends ActiveStory {
   id: string;
   name: string;
   savedAt: string;
+  updatedAt?: string;
+  firstBeatPreview?: string;
   summary?: string;
   isSynced?: boolean;
 }

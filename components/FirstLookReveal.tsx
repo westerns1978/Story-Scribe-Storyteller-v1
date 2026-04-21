@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { ActiveStory } from '../types';
+import { formatDisplayNameOrDefault } from '../utils/nameUtils';
 
 interface StoryRevealProps {
   storyData: ActiveStory;
@@ -22,10 +23,10 @@ const StoryReveal: React.FC<StoryRevealProps> = ({ storyData, onComplete }) => {
     }
     
     // Final item is always the storyteller's name
-    items.push({ 
-        image: validImages.length > 2 ? validImages[2].image_url : (validImages[0]?.image_url || null), 
-        text: typeof storyData.storytellerName === 'string' ? storyData.storytellerName : 'A Story Unveiled', 
-        isName: true 
+    items.push({
+        image: validImages.length > 2 ? validImages[2].image_url : (validImages[0]?.image_url || null),
+        text: formatDisplayNameOrDefault(storyData.storytellerName, 'A Story Unveiled'),
+        isName: true
     });
     
     return items;

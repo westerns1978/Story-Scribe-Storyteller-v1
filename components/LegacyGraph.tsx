@@ -4,6 +4,7 @@ import GalaxyIcon from './icons/GalaxyIcon';
 import XMarkIcon from './icons/XMarkIcon';
 import UsersIcon from './icons/UsersIcon';
 import BoltIcon from './icons/BoltIcon';
+import { formatDisplayName } from '../utils/nameUtils';
 
 interface LegacyGraphProps {
   stories: StoryArchiveItem[];
@@ -44,7 +45,7 @@ export const LegacyGraph: React.FC<LegacyGraphProps> = ({ stories, isOpen, onClo
             
             tempNodes.push({
                 id: storyId,
-                label: story.storytellerName,
+                label: formatDisplayName(story.storytellerName) || story.storytellerName,
                 type: 'story',
                 x: 500 + radius * Math.cos(angle),
                 y: 400 + radius * Math.sin(angle),

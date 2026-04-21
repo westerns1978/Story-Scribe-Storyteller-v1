@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ActiveStory } from '../types';
-import { BRAND } from '../utils/brandUtils';
+import { BRAND, isWissums } from '../utils/brandUtils';
+import { formatDisplayNameOrDefault } from '../utils/nameUtils';
 import { findMusicFromSuggestion, toneToMusicQuery } from '../services/musicService';
-import { narrateText, playAudioBuffer, stopAllAudio } from '../services/narrationService';
+import { narrateText, playAudioBuffer, stopAllAudio, getNarrationFailureStreak, getLastNarrationFailure } from '../services/narrationService';
 
 interface CinematicRevealProps {
   story: ActiveStory;
@@ -10,8 +11,10 @@ interface CinematicRevealProps {
   onShare?: () => void;
   onViewShelf?: () => void;
   onComplete?: () => void;
-  narratorVoice?: 'Kore' | 'Fenrir';
+  narratorVoice?: string;
   autoPlay?: boolean;
+  /** Skip tap-to-start entirely and begin playback automatically after mount. */
+  autoStart?: boolean;
 }
 
 function getMusicQueryForStory(story: ActiveStory): string {
@@ -41,12 +44,14 @@ function buildScenes(story: ActiveStory): Scene[] {
   const beats = story.storyboard?.story_beats || [];
   const images = story.generatedImages || [];
   const realPhotos = (story as any).realAnchorPhotos || [];
+  // One canonical display form for every scene/caption derived from the name.
+  const displayName = formatDisplayNameOrDefault((story as any).storytellerName, 'Subject');
 
   const storyBeats = beats.map((beat: any, i: number) => {
     const img = images.find((im: any) => im.index === i || im.image_index === i) || images[i];
     const anchorPhoto = beat.anchor_photo || (realPhotos[0] ? {
       url: realPhotos[0].public_url,
-      caption: `The Real ${(story as any).storytellerName || 'Subject'}`,
+      caption: `The Real ${displayName}`,
     } : null);
     return {
       image: img?.image_url || '',
@@ -58,12 +63,11 @@ function buildScenes(story: ActiveStory): Scene[] {
   }).filter(s => s.narration);
 
   if (realPhotos.length > 0 && realPhotos[0].public_url) {
-    const name = (story as any).storytellerName || 'them';
     const openingScene: Scene = {
       image: realPhotos[0].public_url,
-      caption: `The Real ${name}`,
-      narration: `This is ${name}. Before the story — the real face, the real smile. Everything that follows is their legacy.`,
-      beatTitle: `The Real ${name}`,
+      caption: `The Real ${displayName}`,
+      narration: `This is ${displayName}. Before the story — the real face, the real smile. Everything that follows is their legacy.`,
+      beatTitle: `The Real ${displayName}`,
       anchorPhoto: null,
     };
     return [openingScene, ...storyBeats];
@@ -73,8 +77,8 @@ function buildScenes(story: ActiveStory): Scene[] {
 }
 
 const CinematicReveal: React.FC<CinematicRevealProps> = ({
-  story, onRestart, narratorVoice = 'Kore', onShare, onViewShelf, onComplete,
-  autoPlay = false,
+  story, onRestart, narratorVoice = 'Aoede', onShare, onViewShelf, onComplete,
+  autoPlay = false, autoStart = false,
 }) => {
   const scenes = buildScenes(story);
   const totalScenes = Math.max(scenes.length, 1);
@@ -89,9 +93,22 @@ const CinematicReveal: React.FC<CinematicRevealProps> = ({
   const [sceneProgress, setSceneProgress] = useState(0);
   const [allDone, setAllDone] = useState(false);
   const [showNarrationText, setShowNarrationText] = useState(false);
-  const [showTapOverlay, setShowTapOverlay] = useState(autoPlay);
-  const [musicVolume, setMusicVolume] = useState(0.15);
+  // When autoStart is true we skip the tap overlay entirely
+  const [showTapOverlay, setShowTapOverlay] = useState(autoPlay && !autoStart);
+  const [musicVolume, setMusicVolume] = useState(0.4);
   const [musicPaused, setMusicPaused] = useState(false);
+  // Audio state for the top-left speaker indicator + failure banner
+  const [audioState, setAudioState] = useState<'idle' | 'loading' | 'playing' | 'failed'>('idle');
+  const [showAudioFailBanner, setShowAudioFailBanner] = useState(false);
+  // Latched once we've confirmed narration is down for multiple scenes in a row
+  // (quota, billing cap, model deprecation, etc.). Swaps the tap-to-retry banner
+  // for a passive "Narration unavailable" indicator since retrying won't help.
+  const [narrationUnavailable, setNarrationUnavailable] = useState(false);
+  const [narrationFailKind, setNarrationFailKind] = useState<string>('');
+  const audioStartedRef = useRef(false);
+  const audioFailTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // "Preparing {Name}'s story..." bridge between tap-to-begin and scene 0
+  const [showPreparingBridge, setShowPreparingBridge] = useState(false);
 
   const narrationTextTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const musicRef = useRef<HTMLAudioElement | null>(null);
@@ -113,11 +130,27 @@ const CinematicReveal: React.FC<CinematicRevealProps> = ({
   }, [currentScene, isPlaying]);
 
   useEffect(() => {
+    // Preload music URL + <audio> element on mount so autostart has zero cold-start delay.
     const query = getMusicQueryForStory(story);
     findMusicFromSuggestion(query).then(tracks => {
-      if (tracks[0]?.url) musicUrlRef.current = tracks[0].url;
+      if (tracks[0]?.url) {
+        musicUrlRef.current = tracks[0].url;
+        // Eagerly construct the audio element so the network fetch begins NOW,
+        // long before the user (or autostart timer) calls handlePlay.
+        if (!musicRef.current) {
+          try {
+            const audio = new Audio(tracks[0].url);
+            audio.loop = true;
+            audio.volume = 0;
+            audio.preload = 'auto';
+            musicRef.current = audio;
+          } catch {}
+        }
+      }
     }).catch(() => {});
-    if (musicRef.current) { musicRef.current.pause(); musicRef.current.src = ''; musicRef.current = null; }
+    return () => {
+      if (musicRef.current) { try { musicRef.current.pause(); } catch {} musicRef.current.src = ''; musicRef.current = null; }
+    };
   }, [story]);
 
   const fadeMusic = useCallback((targetVol: number, ms = 1500) => {
@@ -170,9 +203,7 @@ const CinematicReveal: React.FC<CinematicRevealProps> = ({
 
     // ── Fallback: check beatAudio (inline from story creation) ──
     const beatAudio = (story as any).beatAudio || [];
-    const cached = narratorVoice === 'Kore'
-      ? beatAudio.find((b: any) => b.beat_index === sceneIdx || b.beat_index === sceneIdx - 1)
-      : null;
+    const cached = beatAudio.find((b: any) => b.beat_index === sceneIdx || b.beat_index === sceneIdx - 1);
     if (cached?.audio_base64) {
       try {
         const audioCtx = new AudioContext({ sampleRate: 24000 });
@@ -192,6 +223,20 @@ const CinematicReveal: React.FC<CinematicRevealProps> = ({
     }
     const text = scenes[sceneIdx]?.narration;
     if (!text) return null;
+    // ── Circuit breaker ──────────────────────────────────────────────────
+    // If narrateText has failed 2+ times in a row, the edge function is
+    // almost certainly capped/down. Stop piling on calls that will just
+    // return 502 and burn quota — short-circuit and return null so the
+    // scene advances silently under the "Narration unavailable" pill.
+    // The streak resets to 0 on the first successful call, so this
+    // naturally lifts as soon as the service recovers.
+    if (getNarrationFailureStreak() >= 2) {
+      const last = getLastNarrationFailure();
+      console.warn(
+        `[CinematicReveal] Skipping fetchNarration(${sceneIdx}) — circuit breaker open (streak=${getNarrationFailureStreak()}, lastKind=${last?.kind || 'n/a'})`
+      );
+      return null;
+    }
     try {
       const result = await narrateText(text.slice(0, 800), narratorVoice);
       if (!result) return null;
@@ -236,11 +281,10 @@ const CinematicReveal: React.FC<CinematicRevealProps> = ({
     if (progressTimerRef.current) clearInterval(progressTimerRef.current);
 
     setLoadingNarration(true);
-    const narFetch = Promise.all([
-      fetchNarration(idx),
-      idx + 1 < totalScenes ? fetchNarration(idx + 1) : Promise.resolve(null),
-    ]).catch(() => [null, null]);
-    const [narResult] = await narFetch;
+    // Fire the NEXT scene's fetch as fire-and-forget so current scene
+    // playback is never gated on loading scene N+1.
+    if (idx + 1 < totalScenes) { fetchNarration(idx + 1).catch(() => {}); }
+    const narResult = await fetchNarration(idx).catch(() => null);
     setLoadingNarration(false);
     setNarrationReady(!!narResult);
 
@@ -248,10 +292,23 @@ const CinematicReveal: React.FC<CinematicRevealProps> = ({
     let sceneDuration = MIN_SCENE_MS;
     if (narResult) {
       if (musicRef.current && !musicRef.current.paused) fadeMusic(0.08, 800);
+      // Ensure the AudioContext is running before we schedule (safety net — the
+      // gesture primer already did this, but a suspended context here would
+      // silently fail). resume() is a no-op if already running.
+      try { await narResult.audioContext.resume(); } catch {}
       await new Promise<void>(resolve => {
         playAudioBuffer(narResult.audioBuffer, narResult.audioContext, { onEnded: resolve, gainValue: 1.0 });
         activeAudioCtxRef.current = narResult.audioContext;
         sceneStartTimeRef.current = narResult.audioContext.currentTime;
+        // Mark audio as actually playing — cancels the 5s failure timer.
+        audioStartedRef.current = true;
+        setAudioState('playing');
+        setShowAudioFailBanner(false);
+        // Narration just succeeded — clear the unavailable latch so the
+        // indicator disappears. narrationService already reset its streak.
+        setNarrationUnavailable(false);
+        setNarrationFailKind('');
+        if (audioFailTimerRef.current) { clearTimeout(audioFailTimerRef.current); audioFailTimerRef.current = null; }
         setTimeout(resolve, 60000);
       });
       activeAudioCtxRef.current = null;
@@ -259,6 +316,24 @@ const CinematicReveal: React.FC<CinematicRevealProps> = ({
       // Ensure minimum 8s per scene even if narration is shorter
       const narDurationMs = (narResult.audioBuffer.duration || 8) * 1000;
       sceneDuration = Math.max(MIN_SCENE_MS, narDurationMs + 2000);
+    } else {
+      // No narration available — mark failed so the banner appears sooner.
+      setAudioState('failed');
+      // Check the global failure streak maintained by narrationService.
+      // 2+ successive failures = service-level issue (quota/billing/model),
+      // latch the "unavailable" state and suppress the tap-to-retry banner
+      // since another tap won't fix it. One-off failures still show the
+      // retry banner as before.
+      const streak = getNarrationFailureStreak();
+      if (streak >= 2) {
+        setNarrationUnavailable(true);
+        setShowAudioFailBanner(false);
+        const last = getLastNarrationFailure();
+        if (last?.kind) setNarrationFailKind(last.kind);
+      } else {
+        setShowAudioFailBanner(true);
+      }
+      if (audioFailTimerRef.current) { clearTimeout(audioFailTimerRef.current); audioFailTimerRef.current = null; }
     }
 
     let elapsed = 0;
@@ -276,32 +351,108 @@ const CinematicReveal: React.FC<CinematicRevealProps> = ({
     if (isStartingRef.current || isPlaying) return;
     isStartingRef.current = true;
     setIsPlaying(true); setIsPaused(false); setShowControls(false); setPreparingScene(false);
+    // Audio indicator → loading. Arm a 5s timer; if still not playing, show banner.
+    setAudioState('loading');
+    setShowAudioFailBanner(false);
+    audioStartedRef.current = false;
+    if (audioFailTimerRef.current) clearTimeout(audioFailTimerRef.current);
+    audioFailTimerRef.current = setTimeout(() => {
+      if (!audioStartedRef.current) {
+        setAudioState('failed');
+        setShowAudioFailBanner(true);
+      }
+    }, 5000);
+    // ── Music: start in parallel with narration (no await) ──
+    //     The <audio> element was created on mount in the preload useEffect,
+    //     so here we just fire .play() and fade in — zero cold-start cost.
     (async () => {
       try {
-        if (!musicUrlRef.current) {
-          const tracks = await findMusicFromSuggestion(getMusicQueryForStory(story));
-          if (tracks[0]?.url) musicUrlRef.current = tracks[0].url;
+        // Fallback: if preload hadn't resolved yet, quickly fetch + construct now.
+        if (!musicRef.current) {
+          if (!musicUrlRef.current) {
+            const tracks = await findMusicFromSuggestion(getMusicQueryForStory(story));
+            if (tracks[0]?.url) musicUrlRef.current = tracks[0].url;
+          }
+          if (musicUrlRef.current) {
+            const audio = new Audio(musicUrlRef.current);
+            audio.loop = true; audio.volume = 0; audio.preload = 'auto';
+            musicRef.current = audio;
+          }
         }
-        if (musicUrlRef.current && !musicRef.current) {
-          const audio = new Audio(musicUrlRef.current);
-          audio.loop = true; audio.volume = 0; audio.preload = 'auto';
-          musicRef.current = audio;
-          await audio.play();
-          fadeMusic(0.15, 2000);
+        if (musicRef.current) {
+          // Don't await — let music catch up to narration, they start together.
+          musicRef.current.play().catch(() => {});
+          // Gentle 3-second swell to 0.4 — present under narration without masking it.
+          fadeMusic(0.4, 3000);
         }
       } catch (e) { console.warn('[CinematicReveal] Background music unavailable:', e); }
     })();
+    // Narration: fire immediately, in parallel with music.
     playScene(0);
     isStartingRef.current = false;
   }, [playScene, fadeMusic, story, isPlaying]);
 
   const handleTapToStart = useCallback(() => {
+    // ── CRITICAL: unlock audio SYNCHRONOUSLY on the user gesture ─────────────
+    // Browsers bind the autoplay permission to the exact call-stack frame of
+    // a user gesture. Anything awaited or deferred past this point loses it.
+    //
+    // (a) Create a fresh AudioContext right here — this one is born "running",
+    //     not suspended, because it was created on the gesture.
+    // (b) Resume every AudioContext already in narrationCache (those were
+    //     created during the mount pre-fetch, so they're suspended). Browsers
+    //     unlock ALL AudioContexts for the origin once any one is resumed on
+    //     a gesture, but we call resume() on each to be explicit.
+    // (c) Prime the <audio> music element: call .play() once inside the
+    //     gesture so subsequent fire-and-forget .play() calls succeed.
+    try {
+      const primer = new AudioContext({ sampleRate: 24000 });
+      // .resume() is a Promise — we don't await it, but kicking it off on the
+      // gesture frame is what the browser cares about.
+      primer.resume().catch(() => {});
+      // Keep the primer attached so cached contexts share the unlocked state
+      // (also gives handlePause something to suspend even before narration).
+      activeAudioCtxRef.current = primer;
+    } catch {}
+    Object.values(narrationCache.current).forEach(entry => {
+      try { entry.audioContext.resume(); } catch {}
+    });
+    if (musicRef.current) {
+      // Fire play() synchronously to register the gesture on the <audio> element.
+      // Volume is already 0 from the preload, so this is silent until fadeMusic.
+      try { musicRef.current.play().catch(() => {}); } catch {}
+    }
+
     setShowTapOverlay(false);
-    // Set scene 0 visible immediately so image starts loading
+    // Preload scene 0 image behind the bridge screen
     setCurrentScene(0);
-    // Small delay lets the image mount before audio/play logic fires
-    setTimeout(() => handlePlay(), 150);
+    // Show the "Preparing {Name}'s story..." bridge for a beat of anticipation.
+    // This is quiet theater — the audio is already unlocked above, so we can
+    // afford ~1.6s of cinematic breathing room before the first scene appears.
+    setShowPreparingBridge(true);
+    setTimeout(() => {
+      setShowPreparingBridge(false);
+      handlePlay();
+    }, 1600);
   }, [handlePlay]);
+
+  // ── Auto-start: fire handlePlay automatically (demo mode / share links) ──
+  // MUST come AFTER handlePlay is declared to avoid TDZ (temporal dead zone).
+  // Fires once on mount. Uses refs to stay resilient to handlePlay recreation.
+  //
+  // Delay is intentionally small: one paint frame is enough for the scene-0
+  // image to mount and begin loading. Music + narration then fire in parallel,
+  // giving photo + voice + music within ~1 second of the URL loading.
+  const autoStartFiredRef = useRef(false);
+  const handlePlayRef = useRef(handlePlay);
+  useEffect(() => { handlePlayRef.current = handlePlay; }, [handlePlay]);
+  useEffect(() => {
+    if (!autoStart || autoStartFiredRef.current) return;
+    autoStartFiredRef.current = true;
+    // 100ms — enough for the first scene image to mount, no more.
+    const t = setTimeout(() => handlePlayRef.current(), 100);
+    return () => clearTimeout(t);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handlePause = useCallback(() => {
     if (!isPlaying || isPaused) return;
@@ -359,15 +510,46 @@ const CinematicReveal: React.FC<CinematicRevealProps> = ({
     return () => {
       if (sceneTimerRef.current) clearTimeout(sceneTimerRef.current);
       if (progressTimerRef.current) clearInterval(progressTimerRef.current);
+      if (audioFailTimerRef.current) clearTimeout(audioFailTimerRef.current);
       musicRef.current?.pause();
     };
   }, []);
+
+  // ── Retry audio from the failure banner — same gesture-unlock protocol ──
+  const handleRetryAudio = useCallback(() => {
+    try {
+      const primer = new AudioContext({ sampleRate: 24000 });
+      primer.resume().catch(() => {});
+      activeAudioCtxRef.current = primer;
+    } catch {}
+    Object.values(narrationCache.current).forEach(entry => {
+      try { entry.audioContext.resume(); } catch {}
+    });
+    if (musicRef.current) { try { musicRef.current.play().catch(() => {}); } catch {} }
+    setShowAudioFailBanner(false);
+    setAudioState('loading');
+    audioStartedRef.current = false;
+    // Re-play from the current scene (not scene 0 — user is already watching)
+    const resumeIdx = currentScene;
+    // Clear cache for this scene so we re-fetch with a gesture-bound context
+    delete narrationCache.current[resumeIdx];
+    if (isPlaying) {
+      // Already in the play loop — just let the next playScene call pick it up
+      stopAllAudio();
+      playScene(resumeIdx);
+    } else {
+      handlePlay();
+    }
+  }, [currentScene, isPlaying, playScene, handlePlay]);
 
   const scene = scenes[currentScene] || { image: '', caption: (story as any).storytellerName, narration: '', beatTitle: '' };
   // Fallback image if scene has none — use first generated image
   const sceneImage = scene.image || (story.generatedImages?.[0]?.image_url) || '';
   const kbOrigin = getKBOrigin(currentScene);
-  const storytellerName = (story as any).storytellerName || 'A Life Well Lived';
+  // Single canonical display form for every scene overlay. Strips birth-year
+  // suffixes, normalizes casing (Title Case with particle/Mc/apostrophe/roman-
+  // numeral handling). See utils/nameUtils.ts.
+  const storytellerName = formatDisplayNameOrDefault((story as any).storytellerName, 'A Life Well Lived');
 
   // ── Tap-to-start overlay ───────────────────────────────────────────────────
   if (showTapOverlay) {
@@ -402,6 +584,70 @@ const CinematicReveal: React.FC<CinematicRevealProps> = ({
     );
   }
 
+  // ── Preparing bridge: 1.6s of quiet anticipation between tap and scene 0 ──
+  // Dark screen, storyteller's name fades in with gold glow, animated gold line
+  // expands under the name, "Preparing {Name}'s story..." caption rises last.
+  // No spinners — the theater lights are coming up, not a progress bar.
+  if (showPreparingBridge) {
+    return (
+      <div style={{
+        position:'fixed', inset:0, zIndex:999,
+        background:'radial-gradient(ellipse at center, #1A0F07 0%, #08060A 100%)',
+        display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+        padding:'0 24px', overflow:'hidden',
+      }}>
+        <style>{`
+          @keyframes bridgeLine{0%{width:0;opacity:0}30%{opacity:.9}100%{width:72px;opacity:.9}}
+          @keyframes bridgeName{0%{opacity:0;letter-spacing:.08em;filter:blur(4px)}60%{filter:blur(0)}100%{opacity:1;letter-spacing:-0.01em;filter:blur(0)}}
+          @keyframes bridgeCaption{0%,30%{opacity:0;transform:translateY(8px)}100%{opacity:.7;transform:none}}
+          @keyframes bridgeBgPulse{0%,100%{opacity:.35}50%{opacity:.55}}
+        `}</style>
+        {/* Subtle gold haze behind name */}
+        <div style={{
+          position:'absolute', left:'50%', top:'50%', transform:'translate(-50%,-50%)',
+          width:'80vw', maxWidth:640, height:320,
+          background:'radial-gradient(ellipse at center, rgba(196,151,59,0.18) 0%, transparent 70%)',
+          animation:'bridgeBgPulse 3s ease-in-out infinite',
+          pointerEvents:'none',
+        }} />
+
+        <h1 style={{
+          fontFamily:'"Playfair Display", Georgia, serif',
+          fontWeight:700,
+          fontSize:'clamp(36px, 9vw, 72px)',
+          color:'#F5ECD7',
+          textAlign:'center',
+          lineHeight:1.05,
+          margin:0,
+          textShadow:'0 0 30px rgba(196,151,59,0.35), 0 0 80px rgba(196,151,59,0.15)',
+          animation:'bridgeName 1.2s cubic-bezier(0.16,1,0.3,1) both',
+        }}>
+          {storytellerName}
+        </h1>
+
+        <div style={{
+          height:1,
+          background:'linear-gradient(to right, transparent, rgba(196,151,59,0.8), transparent)',
+          margin:'28px 0 22px',
+          animation:'bridgeLine 1s cubic-bezier(0.16,1,0.3,1) 0.6s both',
+        }} />
+
+        <p style={{
+          fontFamily:'Georgia, "Times New Roman", serif',
+          fontStyle:'italic',
+          fontSize:'clamp(13px, 3.2vw, 16px)',
+          color:'rgba(196,151,59,0.75)',
+          textAlign:'center',
+          margin:0,
+          letterSpacing:'0.02em',
+          animation:'bridgeCaption 1.4s ease 0.3s both',
+        }}>
+          Preparing {storytellerName}'s story…
+        </p>
+      </div>
+    );
+  }
+
   // ── Done screen ─────────────────────────────────────────────────────────────
   if (allDone) {
     return (
@@ -416,8 +662,16 @@ const CinematicReveal: React.FC<CinematicRevealProps> = ({
           <div className="flex flex-col gap-3">
             <button onClick={() => { setAllDone(false); setCurrentScene(0); setIsPlaying(false); }}
               className="px-8 py-4 bg-white/10 hover:bg-white/20 text-white font-black rounded-full text-xs uppercase tracking-[0.3em] transition-all">Watch Again</button>
+            {onShare && (
+              <button onClick={onShare}
+                className="px-8 py-4 bg-heritage-warmGold/20 hover:bg-heritage-warmGold/30 text-heritage-warmGold font-black rounded-full text-xs uppercase tracking-[0.3em] border border-heritage-warmGold/30 transition-all">
+                ↗ Share This Story
+              </button>
+            )}
             <button onClick={onRestart}
-              className="px-8 py-4 bg-heritage-burgundy text-white font-black rounded-full shadow-xl text-xs uppercase tracking-[0.3em] hover:scale-[1.02] transition-all">Preserve Another Story</button>
+              className="px-8 py-4 bg-heritage-burgundy text-white font-black rounded-full shadow-xl text-xs uppercase tracking-[0.3em] hover:scale-[1.02] transition-all">
+              {isWissums ? "Create your pet's story →" : 'Preserve another story →'}
+            </button>
           </div>
         </div>
       </div>
@@ -431,15 +685,22 @@ const CinematicReveal: React.FC<CinematicRevealProps> = ({
         <div className="absolute inset-0 overflow-hidden">
           <img key={`${currentScene}-img`} src={sceneImage} alt={scene.caption}
             className="absolute inset-0 w-full h-full object-cover"
-            style={{ transformOrigin:kbOrigin, animation:'kenBurns 12s ease-out forwards' }} />
+            style={{ transformOrigin:kbOrigin, animation:'sceneCrossfade 0.9s ease both, kenBurns 12s ease-out forwards' }} />
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_40%,rgba(0,0,0,0.7)_100%)]" />
           <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/90 via-black/40 to-transparent" />
           <div className="absolute inset-0 opacity-[0.04] pointer-events-none" style={{ backgroundImage:`url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`, backgroundSize:'150px' }} />
-          <div className="absolute top-0 left-0 right-0 h-12 bg-black" />
-          <div className="absolute bottom-0 left-0 right-0 h-10 bg-black" />
+          {/* Cinematic edge vignettes — replace hard letterbox bars for full-bleed mobile */}
+          <div className="absolute top-0 left-0 right-0 h-20 pointer-events-none" style={{ background:'linear-gradient(to bottom, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.35) 50%, transparent 100%)' }} />
+          <div className="absolute bottom-0 left-0 right-0 h-24 pointer-events-none" style={{ background:'linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.45) 55%, transparent 100%)' }} />
           {scene.anchorPhoto?.url && (
             <div className="absolute z-20" style={{ bottom:52, right:14 }}>
-              <div style={{ fontSize:7, fontWeight:900, letterSpacing:'.18em', color:'rgba(196,151,59,0.85)', fontFamily:'system-ui', textTransform:'uppercase', textAlign:'right', marginBottom:4 }}>{scene.anchorPhoto.caption || `The Real ${storytellerName}`}</div>
+              <div style={{ fontSize:7, fontWeight:900, letterSpacing:'.18em', color:'rgba(196,151,59,0.85)', fontFamily:'system-ui', textAlign:'right', marginBottom:4 }}>
+                {scene.anchorPhoto.caption ? (
+                  <span style={{ textTransform:'uppercase' }}>{scene.anchorPhoto.caption}</span>
+                ) : (
+                  <><span style={{ textTransform:'uppercase' }}>The Real </span><span>{storytellerName}</span></>
+                )}
+              </div>
               <div style={{ width:88, height:88, borderRadius:8, overflow:'hidden', border:'1.5px solid rgba(196,151,59,0.55)', boxShadow:'0 4px 18px rgba(0,0,0,0.75)' }}>
                 <img src={scene.anchorPhoto.url} alt="Real photo" style={{ width:'100%', height:'100%', objectFit:'cover', display:'block' }} />
               </div>
@@ -451,8 +712,8 @@ const CinematicReveal: React.FC<CinematicRevealProps> = ({
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-heritage-warmGold/10 font-display font-black text-[12vw] text-center leading-none px-8">{storytellerName}</div>
           </div>
-          <div className="absolute top-0 left-0 right-0 h-12 bg-black" />
-          <div className="absolute bottom-0 left-0 right-0 h-10 bg-black" />
+          <div className="absolute top-0 left-0 right-0 h-20 pointer-events-none" style={{ background:'linear-gradient(to bottom, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.35) 50%, transparent 100%)' }} />
+          <div className="absolute bottom-0 left-0 right-0 h-24 pointer-events-none" style={{ background:'linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.45) 55%, transparent 100%)' }} />
         </div>
       )}
 
@@ -495,20 +756,110 @@ const CinematicReveal: React.FC<CinematicRevealProps> = ({
         ))}
       </div>
 
+      {/* Audio state indicator — always visible while experience is active */}
+      {(isPlaying || audioState === 'loading') && (
+        <div
+          className="absolute top-14 left-4 z-40"
+          onClick={e => { e.stopPropagation(); if (audioState === 'failed') handleRetryAudio(); }}
+          style={{
+            display:'flex', alignItems:'center', gap:8,
+            padding:'6px 12px', borderRadius:999,
+            background: audioState === 'failed' ? 'rgba(139,46,59,0.85)' : 'rgba(0,0,0,0.55)',
+            border: `1px solid ${audioState === 'playing' ? 'rgba(196,151,59,0.7)' : audioState === 'loading' ? 'rgba(196,151,59,0.4)' : 'rgba(255,255,255,0.2)'}`,
+            color: audioState === 'playing' ? 'rgba(196,151,59,1)' : 'rgba(255,255,255,0.85)',
+            cursor: audioState === 'failed' ? 'pointer' : 'default',
+            transition: 'all 400ms ease',
+            backdropFilter: 'blur(8px)',
+          }}>
+          <style>{`@keyframes audio-pulse{0%,100%{opacity:.5;transform:scale(1)}50%{opacity:1;transform:scale(1.1)}}`}</style>
+          <span style={{
+            fontSize: 16,
+            animation: audioState === 'loading' ? 'audio-pulse 1.2s ease-in-out infinite' : 'none',
+            filter: audioState === 'failed' ? 'grayscale(1)' : 'none',
+          }}>
+            {audioState === 'failed' ? '🔇' : '🔊'}
+          </span>
+          {audioState === 'failed' && (
+            <span style={{ fontSize:10, fontWeight:700, letterSpacing:'0.15em', textTransform:'uppercase' }}>
+              Tap to hear
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Music controls */}
       {isPlaying && (
-        <div className="absolute top-14 left-4 z-30 flex items-center gap-2 transition-opacity duration-500"
-          style={{ opacity: showControls ? 1 : 0 }} onClick={e => e.stopPropagation()}>
+        <div className="absolute top-14 right-4 z-30 flex items-center gap-2 transition-opacity duration-500"
+          style={{
+            opacity: showControls ? 1 : 0,
+            padding:'6px 12px', borderRadius:999,
+            background:'rgba(0,0,0,0.55)', backdropFilter:'blur(8px)',
+            border:'1px solid rgba(255,255,255,0.12)',
+          }}
+          onClick={e => e.stopPropagation()}>
           <button onClick={handleMusicToggle}
-            style={{ width:32, height:32, borderRadius:'50%', background:'rgba(0,0,0,0.5)', border:'1px solid rgba(255,255,255,0.15)', color:'rgba(255,255,255,0.7)', fontSize:13, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+            style={{ width:28, height:28, borderRadius:'50%', background:'rgba(255,255,255,0.08)', border:'1px solid rgba(255,255,255,0.15)', color:'rgba(255,255,255,0.85)', fontSize:13, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
             {musicPaused ? '♪' : '⏸'}
           </button>
-          <span style={{ fontSize:10, color:'rgba(255,255,255,0.4)' }}>🔈</span>
+          <span style={{ fontSize:16, color:'rgba(196,151,59,0.9)', lineHeight:1 }} title="Music volume">🔊</span>
           <input type="range" min={0} max={1} step={0.05} value={musicVolume}
             onChange={e => handleVolumeChange(parseFloat(e.target.value))}
-            style={{ width:72, accentColor:'rgba(196,151,59,0.8)', cursor:'pointer' }} />
-          <span style={{ fontSize:10, color:'rgba(255,255,255,0.4)' }}>🔊</span>
+            style={{ width:88, accentColor:'rgba(196,151,59,0.9)', cursor:'pointer' }} />
         </div>
+      )}
+
+      {/* Persistent "Narration unavailable" indicator — shown when the
+          narration service has failed on 2+ scenes in a row, meaning retry
+          is unlikely to help (usually hit spending cap / quota). Sits below
+          the audio state pill so it doesn't overlap. Passive, no tap handler. */}
+      {narrationUnavailable && isPlaying && (
+        <div
+          className="absolute top-28 left-4 z-40"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '6px 12px', borderRadius: 999,
+            background: 'rgba(20,10,10,0.7)',
+            border: '1px solid rgba(255,255,255,0.12)',
+            color: 'rgba(255,255,255,0.7)',
+            fontFamily: 'system-ui', fontSize: 10, fontWeight: 700,
+            letterSpacing: '0.15em', textTransform: 'uppercase',
+            backdropFilter: 'blur(8px)',
+          }}
+          title={narrationFailKind ? `Narration failure: ${narrationFailKind}` : 'Narration unavailable'}
+        >
+          <span style={{ fontSize: 14, filter: 'grayscale(1)' }}>🔇</span>
+          <span>Narration unavailable</span>
+        </div>
+      )}
+
+      {/* Audio failure banner + full-screen tap-to-retry layer */}
+      {showAudioFailBanner && !narrationUnavailable && (
+        <>
+          {/* Invisible full-screen layer catches "tap anywhere" — sits above scene
+              controls but below the visible banner. Gesture-bound retry. */}
+          <div
+            onClick={e => { e.stopPropagation(); handleRetryAudio(); }}
+            className="absolute inset-0"
+            style={{ cursor:'pointer', background:'transparent', zIndex:45 }}
+          />
+          {/* Visible banner — gentle, bottom-centered */}
+          <div
+            onClick={e => { e.stopPropagation(); handleRetryAudio(); }}
+            className="absolute z-50"
+            style={{
+              left:'50%', bottom: 120, transform:'translateX(-50%)',
+              padding:'14px 28px', borderRadius:999,
+              background:'rgba(139,46,59,0.92)',
+              border:'1px solid rgba(196,151,59,0.5)',
+              color:'#F5ECD7', fontFamily:'Georgia,"Times New Roman",serif', fontStyle:'italic',
+              fontSize:14, cursor:'pointer', boxShadow:'0 10px 40px rgba(0,0,0,0.5)',
+              backdropFilter:'blur(10px)', animation:'fadeInUp 0.6s ease-out',
+              display:'flex', alignItems:'center', gap:12, maxWidth:'90vw',
+            }}>
+            <span style={{ fontSize:18 }}>🔊</span>
+            <span>Tap anywhere to hear {storytellerName}'s story narrated</span>
+          </div>
+        </>
       )}
 
       {/* Scene overlay */}
@@ -524,15 +875,19 @@ const CinematicReveal: React.FC<CinematicRevealProps> = ({
         {scene.narration && isPlaying && (
           <div key={`${currentScene}-narration`} className="max-w-2xl transition-all duration-700"
             style={{ opacity: showNarrationText ? 1 : 0, transform: showNarrationText ? 'translateY(0)' : 'translateY(8px)' }}>
-            <p className="text-sm lg:text-base font-serif italic leading-relaxed"
-              style={{ color:'rgba(255,255,255,0.92)', textShadow:'0 1px 20px rgba(0,0,0,1), 0 2px 6px rgba(0,0,0,0.9)', lineHeight:1.75 }}>
+            <p className="text-base sm:text-lg lg:text-xl font-serif italic leading-relaxed"
+              style={{ color:'rgba(255,255,255,0.95)', textShadow:'0 1px 20px rgba(0,0,0,1), 0 2px 6px rgba(0,0,0,0.9)', lineHeight:1.7 }}>
               {scene.narration}
             </p>
           </div>
         )}
 
-        <h2 className="text-2xl lg:text-3xl font-display font-black text-white leading-tight tracking-tight"
-          style={{ textShadow:'0 2px 20px rgba(0,0,0,0.8)' }}>{storytellerName}</h2>
+        <h2 className="text-3xl sm:text-4xl lg:text-5xl font-display font-black leading-tight tracking-tight"
+          style={{
+            color:'#F5ECD7',
+            textShadow:'0 2px 24px rgba(0,0,0,0.95), 0 0 40px rgba(196,151,59,0.25), 0 0 80px rgba(196,151,59,0.12)',
+            letterSpacing:'-0.01em',
+          }}>{storytellerName}</h2>
 
         {isPlaying && (
           <div className="flex flex-col items-center gap-3">
@@ -581,6 +936,32 @@ const CinematicReveal: React.FC<CinematicRevealProps> = ({
         )}
       </div>
 
+      {/* Floating share CTA — appears after first beat completes */}
+      {isPlaying && currentScene > 0 && onShare && (
+        <div style={{ position: 'absolute', bottom: 172, right: 16, zIndex: 35, animation: 'fadeInUp 0.6s ease-out' }}
+          onClick={e => e.stopPropagation()}>
+          <button
+            onClick={e => { e.stopPropagation(); onShare(); }}
+            style={{
+              padding: '9px 16px',
+              background: 'rgba(139,46,59,0.85)',
+              border: '1px solid rgba(196,151,59,0.3)',
+              borderRadius: 24,
+              color: 'white',
+              fontSize: 9,
+              fontWeight: 900,
+              letterSpacing: '0.2em',
+              textTransform: 'uppercase',
+              cursor: 'pointer',
+              backdropFilter: 'blur(8px)',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+              whiteSpace: 'nowrap',
+            }}>
+            ↗ Share this story
+          </button>
+        </div>
+      )}
+
       {/* Top controls */}
       <div className="absolute top-14 right-4 z-30 flex gap-2 transition-opacity duration-500" style={{ opacity: showControls ? 1 : 0 }}>
         {onViewShelf && (
@@ -603,9 +984,13 @@ const CinematicReveal: React.FC<CinematicRevealProps> = ({
 
       <style>{`
         @keyframes kenBurns{0%{transform:scale(1.0)}100%{transform:scale(1.25)}}
+        @keyframes sceneCrossfade{0%{opacity:0}100%{opacity:1}}
         @keyframes dotPulse{0%,100%{opacity:0.3;transform:scale(0.85)}50%{opacity:1;transform:scale(1.1)}}
         @keyframes fadeInUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
         @keyframes pulse-ring{0%,100%{transform:scale(1);opacity:.6}50%{transform:scale(1.12);opacity:1}}
+        @keyframes bridgeLine{0%{width:0;opacity:0}30%{opacity:.9}100%{width:72px;opacity:.9}}
+        @keyframes bridgeName{0%{opacity:0;letter-spacing:.08em;filter:blur(4px)}60%{filter:blur(0)}100%{opacity:1;letter-spacing:.02em;filter:blur(0)}}
+        @keyframes bridgeCaption{0%,30%{opacity:0;transform:translateY(8px)}100%{opacity:.7;transform:none}}
         .animate-fade-in{animation:fadeInUp 0.4s ease-out forwards}
       `}</style>
     </div>

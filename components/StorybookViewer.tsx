@@ -5,13 +5,14 @@ import ShareIcon from './icons/ShareIcon';
 import SpeakerWaveIcon from './icons/SpeakerWaveIcon';
 import StopIcon from './icons/StopIcon';
 import { narrateText, playAudioBuffer } from '../services/narrationService';
+import { formatDisplayName } from '../utils/nameUtils';
 
 interface StorybookViewerProps {
     isOpen: boolean;
     onClose: () => void;
     story: StoryArchiveItem | null;
     showToast?: (msg: string, type: 'success' | 'error' | 'warn') => void;
-    narratorVoice?: 'Kore' | 'Fenrir';
+    narratorVoice?: string;
 }
 
 // ─── Page types ───────────────────────────────────────────────────────────────
@@ -502,7 +503,7 @@ const StorybookViewer: React.FC<StorybookViewerProps> = ({ isOpen, onClose, stor
         style={{ opacity: isAnimating ? 0 : 1 }}
       >
         {currentPage.kind === 'cover' && (
-          <CoverPage name={story.storytellerName} formattedDate={formattedDate} />
+          <CoverPage name={formatDisplayName(story.storytellerName)} formattedDate={formattedDate} />
         )}
         {currentPage.kind === 'dedication' && (
           <DedicationPage summary={story.extraction?.summary} themes={story.extraction?.themes} />
@@ -523,7 +524,7 @@ const StorybookViewer: React.FC<StorybookViewerProps> = ({ isOpen, onClose, stor
           <HeirloomsPage artifacts={story.artifacts} />
         )}
         {currentPage.kind === 'colophon' && (
-          <ColophonPage name={story.storytellerName} />
+          <ColophonPage name={formatDisplayName(story.storytellerName)} />
         )}
       </div>
 

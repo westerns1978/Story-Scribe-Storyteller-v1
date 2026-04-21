@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { BRAND } from '../utils/brandUtils';
+import { formatDisplayName } from '../utils/nameUtils';
 
 // ── Curated quotes — grief, memory, legacy, the irreplaceable ──────────────
 const QUOTES = [
@@ -151,7 +152,7 @@ const StoryLoadingCinema: React.FC<Props> = ({ storytellerName, progressStage })
   const dots = '.'.repeat(dotsCount);
 
   const name = storytellerName && storytellerName !== 'Unknown'
-    ? storytellerName
+    ? (formatDisplayName(storytellerName) || storytellerName)
     : null;
 
   return (

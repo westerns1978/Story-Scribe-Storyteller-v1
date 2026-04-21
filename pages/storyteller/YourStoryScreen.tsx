@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { ActiveStory } from '../../types';
 import { isWissums, BRAND } from '../../utils/brandUtils';
@@ -22,6 +22,7 @@ import InspirationPanel from '../../components/InspirationPanel';
 import { ImageEditModal, SceneToEdit } from '../../components/ImageEditModal';
 import { GenerateMovieButton } from '../../components/GenerateMovieButton';
 import { TributeWall } from '../../components/TributeWall';
+import { formatDisplayNameOrDefault } from '../../utils/nameUtils';
 
 const containerVariants = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.1 } } };
 const itemVariants = { hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0 } };
@@ -31,21 +32,23 @@ type DetailTab = 'overview' | 'memory-lane' | 'map' | 'heirlooms' | 'insights' |
 interface YourStoryScreenProps {
   story: ActiveStory;
   onRestart: () => void;
-  narratorVoice?: 'Kore' | 'Fenrir';
+  narratorVoice?: string;
   onViewShelf?: () => void;
   onBack?: () => void;
   onReorderBeats?: (oldIndex: number, newIndex: number) => void;
   isSharedView?: boolean;
   autoPlayCinematic?: boolean;
+  /** Auto-start CinematicReveal without any tap interaction (demo mode). */
+  autoStart?: boolean;
   onRefineNarrative?: (instruction: string) => Promise<void>;
   paidTier?: 'basic' | 'premium' | null;
   onShare?: () => void;
 }
 
 export const YourStoryScreen: React.FC<YourStoryScreenProps> = ({
-  story, onRestart, narratorVoice = 'Kore', onViewShelf, onBack,
-  onReorderBeats, isSharedView = false, autoPlayCinematic = false, onRefineNarrative,
-  paidTier,
+  story, onRestart, narratorVoice = 'Aoede', onViewShelf, onBack,
+  onReorderBeats, isSharedView = false, autoPlayCinematic = false, autoStart = false,
+  onRefineNarrative, paidTier,
 }) => {
   useEffect(() => { window.scrollTo(0, 0); }, []);
 
@@ -62,6 +65,12 @@ export const YourStoryScreen: React.FC<YourStoryScreenProps> = ({
   const [timeCapsuleYear, setTimeCapsuleYear] = useState<string | null>(null);
   const [timeCapsuleLocation, setTimeCapsuleLocation] = useState<string | undefined>(undefined);
   const [showValidationIssues, setShowValidationIssues] = useState(false);
+
+  // ── Listen (Connie narration) state ──────────────────────────────────────
+  const [narrationLoading, setNarrationLoading] = useState(false);
+  const [narrationPlaying, setNarrationPlaying] = useState(false);
+  // Cache raw PCM samples so replays don't re-fetch from the edge function
+  const narrationCacheRef = useRef<Float32Array | null>(null);
 
   // ── Image editing state ───────────────────────────────────────────────────
   const [sceneToEdit, setSceneToEdit] = useState<SceneToEdit | null>(null);
@@ -113,7 +122,7 @@ export const YourStoryScreen: React.FC<YourStoryScreenProps> = ({
     story?.extraction?.emotional_journey?.overall_tone ||
     story?.extraction?.locations?.length
   ), [story]);
-  const storytellerName = story?.storytellerName || 'Anonymous';
+  const storytellerName = formatDisplayNameOrDefault(story?.storytellerName, 'Anonymous');
 
   // ── Real uploaded assets for grounding (Band of Brothers anchor) ──────────
   // These are the user's actual photos — shown FIRST before any AI imagery
@@ -124,9 +133,81 @@ export const YourStoryScreen: React.FC<YourStoryScreenProps> = ({
     ).slice(0, 3);
   }, [story.artifacts]);
 
+  // ── Stop narration on unmount and when switching to cinematic mode ────────
+  useEffect(() => {
+    return () => {
+      import('../../services/narrationService').then(({ stopAllAudio }) => stopAllAudio()).catch(() => {});
+    };
+  }, []);
+
+  useEffect(() => {
+    if (viewMode === 'cinematic') {
+      import('../../services/narrationService').then(({ stopAllAudio }) => stopAllAudio()).catch(() => {});
+      setNarrationPlaying(false);
+    }
+  }, [viewMode]);
+
+  const handleListen = async () => {
+    const { stopAllAudio, playAudioBuffer } = await import('../../services/narrationService');
+
+    // Stop if already playing — global singleton handles cleanup
+    if (narrationPlaying) {
+      stopAllAudio();
+      setNarrationPlaying(false);
+      return;
+    }
+
+    setNarrationLoading(true);
+    try {
+      let float32 = narrationCacheRef.current;
+
+      if (!float32) {
+        // Fetch full-story narration from edge function (Connie's voice profile)
+        const SUPABASE_URL = 'https://ldzzlndsspkyohvzfiiu.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxkenpsbmRzc3BreW9odnpmaWl1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE3MTEzMDUsImV4cCI6MjA3NzI4NzMwNX0.SK2Y7XMzeGQoVMq9KAmEN1vwy7RjtbIXZf6TyNneFnI';
+
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/story-cascade`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`, 'apikey': SUPABASE_ANON_KEY },
+          body: JSON.stringify({ action: 'generate_narration', session_id: story.sessionId, use_summary: true }),
+        });
+
+        if (!res.ok) throw new Error(`Narration failed (${res.status})`);
+        const data = await res.json();
+        if (!data.audio_base64) throw new Error('No audio returned');
+
+        // Decode PCM base64 → float32 samples and cache them
+        const binary = atob(data.audio_base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        const view = new DataView(bytes.buffer);
+        const samples = bytes.length / 2;
+        float32 = new Float32Array(samples);
+        for (let i = 0; i < samples; i++) float32[i] = view.getInt16(i * 2, true) / 32768.0;
+        narrationCacheRef.current = float32;
+      }
+
+      // Fresh AudioContext each play (stopAllAudio closes the previous one)
+      const ctx = new AudioContext({ sampleRate: 24000 });
+      const audioBuffer = ctx.createBuffer(1, float32.length, 24000);
+      audioBuffer.getChannelData(0).set(float32);
+
+      // Route through global singleton — kills any concurrent narration (cinematic, quotes, etc.)
+      playAudioBuffer(audioBuffer, ctx, {
+        onEnded: () => setNarrationPlaying(false),
+      });
+      setNarrationPlaying(true);
+    } catch (err: any) {
+      console.error('[Listen] Failed:', err.message);
+      showToast('Narration failed — try again', 'error');
+    } finally {
+      setNarrationLoading(false);
+    }
+  };
+
   const handleShareWithFamily = async () => {
     const url = `${window.location.origin}/story/${story?.sessionId || 'unknown'}`;
-    const shareData = { title: `${story?.storytellerName}'s Legacy Story`, text: `I preserved ${story?.storytellerName}'s life story with ${BRAND.name}.`, url };
+    const shareData = { title: `${storytellerName}'s Legacy Story`, text: `I preserved ${storytellerName}'s life story with ${BRAND.name}.`, url };
     try {
       if (navigator.share && navigator.canShare?.(shareData)) { await navigator.share(shareData); showToast('Story shared!', 'success'); }
       else { await navigator.clipboard.writeText(url); setCopyFeedback(true); showToast('Share link copied!', 'success'); setTimeout(() => setCopyFeedback(false), 2500); }
@@ -144,7 +225,7 @@ export const YourStoryScreen: React.FC<YourStoryScreenProps> = ({
     stopAllAudio();
     setSpeakingQuote(index);
     try {
-      const result = await narrateText(quote.slice(0, 300), narratorVoice || 'Kore');
+      const result = await narrateText(quote.slice(0, 300), narratorVoice || 'Aoede');
       if (result) playAudioBuffer(result.audioBuffer, result.audioContext, { onEnded: () => setSpeakingQuote(null) });
       else setSpeakingQuote(null);
     } catch { setSpeakingQuote(null); }
@@ -228,6 +309,8 @@ export const YourStoryScreen: React.FC<YourStoryScreenProps> = ({
           onShare={handleShareWithFamily}
           onViewShelf={onViewShelf}
           onComplete={() => setViewMode('details')}
+          autoStart={autoStart}
+          autoPlay={(isSharedView || autoPlayCinematic) && !autoStart}
         />
         <div className="fixed bottom-6 right-6 z-[400] flex flex-col gap-3 items-end">
           <button onClick={() => setViewMode('details')} className="px-6 py-3 bg-heritage-cream/90 backdrop-blur-md rounded-full text-[10px] font-black text-heritage-ink uppercase tracking-widest border border-heritage-parchment shadow-xl hover:bg-heritage-cream transition-all">{isSharedView ? 'Explore the Story' : 'View Details'}</button>
@@ -317,10 +400,16 @@ export const YourStoryScreen: React.FC<YourStoryScreenProps> = ({
             </button>
           </div>
         </div>
-        <div className="flex gap-1">
+        <div className="flex gap-1 overflow-x-auto -mx-2 px-2 no-scrollbar" style={{ scrollbarWidth:'none', WebkitOverflowScrolling:'touch' }}>
+          <style>{`.no-scrollbar::-webkit-scrollbar{display:none}`}</style>
           {TABS.map(tab => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex items-center gap-1.5 px-4 py-2.5 text-[10px] font-black uppercase tracking-widest rounded-t-xl transition-all border-b-2 ${activeTab === tab.id ? 'text-heritage-burgundy border-heritage-burgundy bg-white/60' : 'text-heritage-inkMuted border-transparent hover:text-heritage-ink hover:bg-white/30'}`}>
-              <span>{tab.emoji}</span><span className="hidden sm:inline">{tab.label}</span>
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex-shrink-0 flex items-center gap-1.5 px-4 text-[10px] font-black uppercase tracking-widest rounded-t-xl transition-all border-b-2 ${activeTab === tab.id ? 'text-heritage-burgundy border-heritage-burgundy bg-white/60' : 'text-heritage-inkMuted border-transparent hover:text-heritage-ink hover:bg-white/30'}`}
+              style={{ minHeight:44, paddingTop:10, paddingBottom:10 }}
+            >
+              <span className="text-sm">{tab.emoji}</span><span className="hidden sm:inline">{tab.label}</span>
             </button>
           ))}
         </div>
@@ -781,7 +870,7 @@ export const YourStoryScreen: React.FC<YourStoryScreenProps> = ({
               {!isSharedView && (
                 <button
                   onClick={() => {
-                    const url = window.location.origin + '?tribute=' + story.sessionId + '&for=' + encodeURIComponent(story.storytellerName || '');
+                    const url = window.location.origin + '?tribute=' + story.sessionId + '&for=' + encodeURIComponent(storytellerName || '');
                     navigator.clipboard.writeText(url).then(() => showToast('Tribute link copied!', 'success'));
                   }}
                   className="px-10 py-5 bg-heritage-cream border border-heritage-ink/10 text-heritage-ink font-black rounded-full shadow-sm flex items-center justify-center gap-4 text-xs uppercase tracking-widest hover:bg-heritage-linen transition-all"
@@ -798,6 +887,7 @@ export const YourStoryScreen: React.FC<YourStoryScreenProps> = ({
                 </div>
               ) : (
                 <div className="flex flex-col items-center gap-6">
+                  {/* Listen button removed — cinematic narration IS the listen experience. */}
                   {onViewShelf && <button onClick={onViewShelf} className="flex items-center gap-3 px-10 py-4 rounded-full font-black text-xs uppercase tracking-widest transition-all hover:scale-[1.02] active:scale-95" style={{ background: 'linear-gradient(135deg, #2C1F0E, #1A1208)', color: '#C4973B', border: '1px solid rgba(196,151,59,0.3)', boxShadow: '0 8px 30px rgba(0,0,0,0.3)' }}>📚 View All Preserved Stories</button>}
                   <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
                     {onBack && <button onClick={onBack} className="inline-flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.2em] text-heritage-inkMuted/40 hover:text-heritage-oxblood transition-colors">← Home</button>}
@@ -814,7 +904,7 @@ export const YourStoryScreen: React.FC<YourStoryScreenProps> = ({
         {activeTab === 'heirlooms' && <div className="h-full w-full"><HeirloomsGallery artifacts={story.artifacts || []} /></div>}
         {activeTab === 'tribute' && (
           <div className="h-full w-full overflow-y-auto bg-heritage-cream">
-            <TributeWall storyId={story.sessionId} storySubject={story.storytellerName || 'them'} />
+            <TributeWall storyId={story.sessionId} storySubject={storytellerName || 'them'} />
           </div>
         )}
         {activeTab === 'insights' && (

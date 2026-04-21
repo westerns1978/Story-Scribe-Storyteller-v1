@@ -4,6 +4,7 @@ import { isWissums, BRAND, WISSUMS_BG, WISSUMS_PORTRAIT } from '../utils/brandUt
 interface WissumsLandingProps {
   onSelectTier: (tier: 'basic' | 'premium') => void;
   isLoading?: boolean;
+  onDemoMode?: () => void;
 }
 
 const EXAMPLE_PETS = [
@@ -25,7 +26,7 @@ const EXAMPLE_PETS = [
   },
 ];
 
-export const WissumsLanding: React.FC<WissumsLandingProps> = ({ onSelectTier, isLoading }) => {
+export const WissumsLanding: React.FC<WissumsLandingProps> = ({ onSelectTier, isLoading, onDemoMode }) => {
   const [phase, setPhase] = useState(0);
 
   useEffect(() => {
@@ -193,6 +194,24 @@ export const WissumsLanding: React.FC<WissumsLandingProps> = ({ onSelectTier, is
               <div style={{ fontWeight: 900, fontSize: 24, fontFamily: 'Georgia, serif', color: 'rgba(196,151,59,0.9)' }}>$49</div>
             </button>
           </div>
+          {isWissums && onDemoMode && (
+            <div style={{ textAlign: 'center', marginTop: 20 }}>
+              <button
+                onClick={onDemoMode}
+                style={{
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  fontSize: 12, fontFamily: 'Georgia, serif', fontStyle: 'italic',
+                  color: 'rgba(196,151,59,0.45)',
+                  transition: 'color .2s',
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                }}
+                onMouseEnter={e => e.currentTarget.style.color = 'rgba(196,151,59,0.8)'}
+                onMouseLeave={e => e.currentTarget.style.color = 'rgba(196,151,59,0.45)'}
+              >
+                <span style={{ fontSize: 10 }}>▶</span> See a Demo Story
+              </button>
+            </div>
+          )}
           {!isWissums && (
             <div style={{ textAlign: 'center', marginTop: 14 }}>
               <button

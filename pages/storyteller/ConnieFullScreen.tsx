@@ -1,6 +1,10 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useGeminiLive } from '../../hooks/useGeminiLive';
 import CameraScanner, { ScanResult } from '../../components/CameraScanner';
+import { isWissums, BRAND, CONNIE_PORTRAIT, WISSUMS_BG } from '../../utils/brandUtils';
+
+// Husky fallback for Sissy if the hosted portrait fails to load
+const SISSY_HUSKY_FALLBACK = 'https://images.unsplash.com/photo-1617895153857-82fe0a81c958?w=400';
 
 // ─── Inline icons ──────────────────────────────────────────────────────────────
 const MicIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -221,6 +225,20 @@ export const ConnieFullScreen: React.FC<ConnieFullScreenProps> = ({
     >
       <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" />
 
+      {/* Wissums ocean/beach backdrop — restored. Image sits under all content
+          with radial darken overlays so the portrait and text stay readable. */}
+      {isWissums && (
+        <div className="absolute inset-0 pointer-events-none">
+          <img
+            src={WISSUMS_BG}
+            alt=""
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.32 }}
+          />
+          <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse 110% 50% at 50% 110%, rgba(196,151,59,0.08) 0%, rgba(139,46,59,0.05) 40%, transparent 65%)' }} />
+          <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse 85% 85% at 50% 50%, transparent 45%, rgba(4,2,6,0.7) 100%)' }} />
+        </div>
+      )}
+
       {/* Ambient glow */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-96 h-96 rounded-full pointer-events-none"
         style={{ background: 'radial-gradient(circle, rgba(196,151,59,0.08) 0%, transparent 70%)' }} />
@@ -234,9 +252,11 @@ export const ConnieFullScreen: React.FC<ConnieFullScreenProps> = ({
           <ArrowLeftIcon className="w-4 h-4 text-white/50" />
         </button>
         <div className="text-center">
-          <div className="text-[9px] font-black uppercase tracking-[0.35em] text-heritage-warmGold/50">Wissums</div>
+          <div className="text-[9px] font-black uppercase tracking-[0.35em] text-heritage-warmGold/50">{BRAND.name}</div>
           <div className="text-white/40 text-[8px] font-serif italic mt-0.5">
-            {subject ? `Preserving ${subject}'s story` : 'Memory gathering'}
+            {subject
+              ? `Preserving ${subject}'s story`
+              : (isWissums ? "Preserving your pet's story" : 'Memory gathering')}
           </div>
         </div>
         <button
@@ -269,11 +289,18 @@ export const ConnieFullScreen: React.FC<ConnieFullScreenProps> = ({
             }}
           >
             <img
-              src="https://storage.googleapis.com/westerns1978-digital-assets/Websites/wissums/connie-ai.png"
-              alt="Connie"
+              src={CONNIE_PORTRAIT}
+              alt={BRAND.agentName}
               className="w-full h-full object-cover"
               onError={e => {
-                (e.target as HTMLImageElement).style.display = 'none';
+                const el = e.target as HTMLImageElement;
+                // Two-step fallback: try husky stock image first (for Sissy),
+                // then hide if even that fails.
+                if (isWissums && el.src !== SISSY_HUSKY_FALLBACK) {
+                  el.src = SISSY_HUSKY_FALLBACK;
+                } else {
+                  el.style.display = 'none';
+                }
               }}
             />
 
@@ -281,7 +308,7 @@ export const ConnieFullScreen: React.FC<ConnieFullScreenProps> = ({
         </div>
 
         <div className="mt-3 text-center">
-          <div className="text-white font-display font-black text-xl tracking-wide">Connie</div>
+          <div className="text-white font-display font-black text-xl tracking-wide">{BRAND.agentName}</div>
           <div className="text-[9px] font-black uppercase tracking-[0.35em] mt-1 transition-colors duration-300"
             style={{ color: isConnieSpeaking ? 'rgba(196,151,59,0.8)' : 'rgba(255,255,255,0.25)' }}>
             {connieStatus}
@@ -302,7 +329,11 @@ export const ConnieFullScreen: React.FC<ConnieFullScreenProps> = ({
             return (
               <div className="h-full flex items-center justify-center">
                 <p className="text-white/20 font-serif italic text-base text-center leading-relaxed max-w-xs">
-                  Tap the button below to meet Connie.<br />She'll guide you gently through {subject ? `${subject}'s` : 'your'} story.
+                  {isWissums ? (
+                    <>Tap to meet {BRAND.agentName}.<br />She gives every story her woof of approval. 🐾</>
+                  ) : (
+                    <>Tap the button below to meet {BRAND.agentName}.<br />She'll guide you gently through {subject ? `${subject}'s` : 'your'} story.</>
+                  )}
                 </p>
               </div>
             );
@@ -310,7 +341,7 @@ export const ConnieFullScreen: React.FC<ConnieFullScreenProps> = ({
           if (!lastConnie && isConnecting) {
             return (
               <div className="h-full flex items-center justify-center">
-                <p className="text-heritage-warmGold/40 font-serif italic text-sm animate-pulse">Connie is preparing...</p>
+                <p className="text-heritage-warmGold/40 font-serif italic text-sm animate-pulse">{BRAND.agentName} is preparing...</p>
               </div>
             );
           }
@@ -427,11 +458,11 @@ export const ConnieFullScreen: React.FC<ConnieFullScreenProps> = ({
         {/* Hint text */}
         <p className="text-center text-[9px] font-black uppercase tracking-[0.3em] text-white/20">
           {false
-            ? 'Tap to meet Connie'
+            ? `Tap to meet ${BRAND.agentName}`
             : isConnecting
             ? 'Please wait...'
             : isConnieSpeaking
-            ? 'Connie is speaking'
+            ? `${BRAND.agentName} is speaking`
             : isListening
             ? 'Tap to stop & send'
             : 'Tap to talk'}
@@ -492,7 +523,7 @@ export const ConnieFullScreen: React.FC<ConnieFullScreenProps> = ({
               <SparkleIcon className="w-8 h-8 text-heritage-warmGold mx-auto mb-2" />
               <h3 className="text-white font-display font-black text-lg">Weave the Story</h3>
               <p className="text-white/50 font-serif italic text-sm mt-1 leading-relaxed">
-                Connie is ready to weave {createSubjectName || subject}'s memories into a legacy story.
+                {BRAND.agentName} is ready to weave {createSubjectName || subject}'s memories into a legacy story.
               </p>
             </div>
             <div className="flex gap-3">

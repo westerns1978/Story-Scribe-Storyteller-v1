@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ActiveStory, StoryArchiveItem } from '../types';
 import { warmTheme, modernTheme, classicTheme, Theme } from './presentationThemes';
 import { exportPresentationToPdf } from '../utils/storybookUtils';
+import { formatDisplayName } from '../utils/nameUtils';
 import XMarkIcon from './icons/XMarkIcon';
 import ArrowLeftIcon from './icons/ArrowLeftIcon';
 import ArrowRightIcon from './icons/ArrowRightIcon';
@@ -83,7 +84,7 @@ const PresentationViewer: React.FC<PresentationViewerProps> = ({ isOpen, onClose
 
   const presentation = story?.extraction?.presentation_structure;
   const slides = presentation?.slides || [];
-  const title = presentation?.presentation_title || story?.storytellerName || 'Untitled Presentation';
+  const title = presentation?.presentation_title || formatDisplayName(story?.storytellerName) || 'Untitled Presentation';
   const validImages = (story?.generatedImages || []).filter(img => img.success && img.image_url);
 
   const handleMouseMove = () => {
@@ -205,7 +206,7 @@ const PresentationViewer: React.FC<PresentationViewerProps> = ({ isOpen, onClose
                           ))}
                       </div>
                   </div>
-                  <button onClick={() => exportPresentationToPdf(slides, story.storytellerName, theme)} className="p-2 bg-black/30 rounded-full text-white hover:bg-black/60" title="Download as PDF"><DownloadIcon /></button>
+                  <button onClick={() => exportPresentationToPdf(slides, formatDisplayName(story.storytellerName) || story.storytellerName, theme)} className="p-2 bg-black/30 rounded-full text-white hover:bg-black/60" title="Download as PDF"><DownloadIcon /></button>
                   <button onClick={handleExit} className="p-2 bg-black/30 rounded-full text-white hover:bg-black/60"><XMarkIcon /></button>
               </div>
           </div>

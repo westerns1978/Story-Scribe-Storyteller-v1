@@ -120,51 +120,98 @@ async function idbList(): Promise<StoryArchiveItem[]> {
 }
 
 export async function saveStory(story: StoryArchiveItem): Promise<void> {
-  await idbSave(story);
+  // Supabase is the source of truth. No local cache — stale data on the shelf
+  // during demos is a worse failure mode than a one-request-per-open fetch.
   supabaseUpsert(story).then(ok => {
     if (!ok) console.warn('[archiveService] Remote sync failed — share links may not work');
   });
 }
 
+/**
+ * Fetch the shelf list directly from Supabase. No cache, no fallback.
+ * Stale stories on the shelf are a demo-killer — we want a clear empty
+ * state (or an error the caller can surface) before we'd ever serve
+ * locally-cached rows that may not exist in the DB anymore.
+ */
 export async function getArchivedStories(retryDelayMs = 0): Promise<StoryArchiveItem[]> {
   if (retryDelayMs > 0) await new Promise(r => setTimeout(r, retryDelayMs));
   try {
     const { createClient } = await import('@supabase/supabase-js');
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    // ── PAYLOAD DISCIPLINE ──────────────────────────────────────────────
+    // narration_audio stores base64 audio blobs up to ~20MB per row. Pulling
+    // it across 20 rows 500s PostgREST. extraction is also unnecessary for
+    // shelf display. We fetch ONLY what the shelf actually renders:
+    //   • identity       (session_id, storyteller_name, title)
+    //   • sort/date      (updated_at, saved_at, created_at)
+    //   • preview text   (storyboard, narrative)
+    //   • cover art      (assets — small, ~1–3KB)
+    // The full story (including narration_audio) loads on click via loadStory().
     const { data, error } = await supabase
       .from('storyscribe_stories')
-      .select('session_id, storyteller_name, title, status, created_at, saved_at, narrative, extraction, storyboard, assets, narration_audio')
-      .eq('org_id', '71077b47-66e8-4fd9-90e7-709773ea6582')
+      .select('session_id, storyteller_name, title, status, created_at, saved_at, updated_at, narrative, storyboard, assets')
       .eq('status', 'complete')
-      .order('created_at', { ascending: false })
-      .limit(50);
+      .order('updated_at', { ascending: false, nullsFirst: false })
+      .limit(20);
 
-    if (!error && data && data.length > 0) {
-      return data.map((row: any) => {
-        let ext = row.extraction;
-        if (typeof ext === 'string') { try { ext = JSON.parse(ext); } catch {} }
-        let sb = row.storyboard;
-        if (typeof sb === 'string') { try { sb = JSON.parse(sb); } catch {} }
-        return {
-          id: row.session_id,
-          sessionId: row.session_id,
-          name: row.storyteller_name || '',
-          storytellerName: row.storyteller_name || '',
-          narrative: row.narrative || '',
-          extraction: ext,
-          storyboard: sb,
-          generatedImages: row.assets?.images || [],
-          artifacts: ext?.artifacts || [],
-          background_music_url: row.background_music_url,
-          narration_audio: row.narration_audio || [],
-          savedAt: row.saved_at || row.created_at,
-        } as StoryArchiveItem;
-      });
+    if (error) {
+      console.warn('[archiveService] Supabase list query errored:', error);
+      return [];
     }
+    if (!data) return [];
+
+    return data.map((row: any) => {
+      let sb = row.storyboard;
+      if (typeof sb === 'string') { try { sb = JSON.parse(sb); } catch {} }
+      // Preview text: prefer first beat narrative_chunk, fall back to the
+      // overall narrative. Client-side extraction — no PostgREST JSON paths.
+      const firstBeat = sb?.story_beats?.[0]?.narrative_chunk || '';
+      const preview = (firstBeat || row.narrative || '').toString();
+      return {
+        id: row.session_id,
+        sessionId: row.session_id,
+        name: row.storyteller_name || '',
+        storytellerName: row.storyteller_name || '',
+        narrative: row.narrative || '',
+        firstBeatPreview: preview.slice(0, 160),
+        storyboard: sb,
+        generatedImages: row.assets?.images || [],
+        savedAt: row.saved_at || row.created_at,
+        updatedAt: row.updated_at || row.saved_at || row.created_at,
+      } as StoryArchiveItem;
+    });
   } catch (e) {
-    console.warn('[archiveService] Supabase list failed, using IndexedDB:', e);
+    console.warn('[archiveService] Supabase list failed — returning empty shelf (no cache fallback):', e);
+    return [];
   }
-  return idbList();
+}
+
+/**
+ * One-time purge of stale local story caches. Called from App.tsx on mount.
+ * Safe to call repeatedly — delete is idempotent.
+ */
+export function purgeLocalStoryCaches(): void {
+  try {
+    // Delete the legacy IndexedDB store that used to cache the shelf.
+    indexedDB.deleteDatabase(DB_NAME);
+  } catch (e) {
+    console.warn('[archiveService] IndexedDB purge failed:', e);
+  }
+  try {
+    // Known + speculative localStorage keys that may have held story lists.
+    const keysToRemove = [
+      'storyscribe_archive',
+      'stories_cache',
+      'wissums_archive',
+      'wissums_stories_cache',
+      'shelf_cache',
+      'saved_stories',
+      'storyscribe_stories_cache',
+    ];
+    for (const k of keysToRemove) localStorage.removeItem(k);
+  } catch (e) {
+    console.warn('[archiveService] localStorage purge failed:', e);
+  }
 }
 
 export async function deleteStory(id: string): Promise<void> {

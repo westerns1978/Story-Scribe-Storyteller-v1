@@ -168,17 +168,14 @@ const ArtifactCard: React.FC<{ item: Artifact; index: number }> = ({ item, index
 const HeirloomsGallery: React.FC<HeirloomsGalleryProps> = ({ artifacts }) => {
   if (!artifacts || artifacts.length === 0) {
     return (
-      <div className="h-full w-full flex flex-col items-center justify-center text-center p-12 bg-[#0a0807]">
+      <div className="h-full w-full flex flex-col items-center justify-center text-center p-12 bg-heritage-cream">
         <div className="relative mb-8">
-          <div className="w-24 h-24 rounded-full border border-heritage-warmGold/10 flex items-center justify-center">
-            <SparklesIcon className="w-10 h-10 text-heritage-warmGold/20" />
+          <div className="w-20 h-20 rounded-full border border-heritage-warmGold/30 flex items-center justify-center bg-heritage-linen/60">
+            <SparklesIcon className="w-8 h-8 text-heritage-warmGold/50" />
           </div>
         </div>
-        <h3 className="text-2xl font-display font-black text-white/60 tracking-tighter uppercase">
-          No Heirlooms Identified
-        </h3>
-        <p className="text-white/25 mt-4 max-w-sm font-serif italic text-base leading-relaxed">
-          Heirlooms appear when the story references significant physical objects — photographs, letters, jewelry, keepsakes. Mention them in the story to unlock this collection.
+        <p className="text-heritage-ink/60 max-w-sm font-serif italic text-lg leading-relaxed">
+          No heirlooms were found in this story.
         </p>
       </div>
     );

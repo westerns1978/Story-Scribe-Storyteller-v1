@@ -12,6 +12,8 @@
  */
 
 import React, { useState } from 'react';
+import { BRAND, isWissums } from '../utils/brandUtils';
+import { formatDisplayName } from '../utils/nameUtils';
 
 const TONE_COLORS: Record<string, string> = {
   'ai-decide':   '#C4973B',
@@ -149,7 +151,7 @@ async function drawCover(ctx: CanvasRenderingContext2D, tc: string, story: any) 
   ctx.globalAlpha = 1;
 
   // Main title
-  const name = story.storytellerName || 'A Life';
+  const name = formatDisplayName(story.storytellerName) || 'A Life';
   const title = story.title || `${name}'s Story`;
   ctx.fillStyle = '#FDF6EC';
   ctx.font = 'bold italic 88px Georgia, serif';
@@ -186,7 +188,7 @@ async function drawCover(ctx: CanvasRenderingContext2D, tc: string, story: any) 
   ctx.fillStyle = 'rgba(255,248,235,0.22)';
   ctx.font = '20px system-ui';
   const now = new Date();
-  ctx.fillText(`Preserved ${now.toLocaleString('default',{month:'long'})} ${now.getFullYear()}  ·  Wissums Wissums`, TX, PH * 0.88);
+  ctx.fillText(`Preserved ${now.toLocaleString('default',{month:'long'})} ${now.getFullYear()}  ·  ${BRAND.name}`, TX, PH * 0.88);
 }
 
 // ── TIMELINE SPREAD ───────────────────────────────────────────────────────────
@@ -534,20 +536,38 @@ async function drawBackCover(ctx: CanvasRenderingContext2D, tc: string, story: a
 
   ctx.fillStyle = '#FDF6EC';
   ctx.font = 'bold italic 80px Georgia, serif';
-  ctx.fillText(story.storytellerName || 'A Life', PW/2, PH/2);
+  ctx.fillText(formatDisplayName(story.storytellerName) || 'A Life', PW/2, PH/2);
 
-  // Closing line
+  // Closing line — cap source at 300 chars (word-boundary ellipsis), wrap up
+  // to 5 lines. If the wrapped output still overflows, append "…" to the last
+  // visible line so the sentence never truncates mid-word on the back cover.
+  let dividerY = PH/2 + 44;
   if (story.extraction?.closing_line) {
+    const MAX_CHARS = 300;
+    const MAX_LINES = 5;
+    let closing = String(story.extraction.closing_line).trim();
+    if (closing.length > MAX_CHARS) {
+      const cut = closing.slice(0, MAX_CHARS);
+      const lastSpace = cut.lastIndexOf(' ');
+      closing = (lastSpace > MAX_CHARS * 0.7 ? cut.slice(0, lastSpace) : cut).replace(/[,;:\s]+$/, '') + '…';
+    }
     ctx.fillStyle = tc; ctx.globalAlpha = 0.65;
     ctx.font = 'italic 24px Georgia, serif';
-    const clLines = wrapText(ctx, `"${story.extraction.closing_line}"`, PW * 0.6);
+    const clLines = wrapText(ctx, `"${closing}"`, PW * 0.6);
+    const visible = clLines.slice(0, MAX_LINES);
+    // If wrapText produced more lines than we can show, append ellipsis to the last visible line
+    if (clLines.length > MAX_LINES && visible.length > 0) {
+      visible[visible.length - 1] = visible[visible.length - 1].replace(/[,;:\s]+$/, '') + '…';
+    }
+    const LINE_H = 32;
     let cly = PH/2 + 48;
-    for (const line of clLines.slice(0, 2)) { ctx.fillText(line, PW/2, cly); cly += 34; }
+    for (const line of visible) { ctx.fillText(line, PW/2, cly); cly += LINE_H; }
     ctx.globalAlpha = 1;
+    dividerY = PH/2 + 48 + visible.length * LINE_H + 14;
   }
 
   ctx.strokeStyle = tc; ctx.lineWidth = 1; ctx.globalAlpha = 0.35;
-  ctx.beginPath(); ctx.moveTo(PW/2 - 200, PH/2 + (story.extraction?.closing_line ? 110 : 44)); ctx.lineTo(PW/2 + 200, PH/2 + (story.extraction?.closing_line ? 110 : 44)); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(PW/2 - 200, dividerY); ctx.lineTo(PW/2 + 200, dividerY); ctx.stroke();
   ctx.globalAlpha = 1;
 
   // QR code — scan to watch
@@ -566,8 +586,8 @@ async function drawBackCover(ctx: CanvasRenderingContext2D, tc: string, story: a
 
   ctx.fillStyle = 'rgba(255,248,235,0.2)';
   ctx.font = '18px system-ui';
-  ctx.fillText('This memory book was crafted by Connie, your AI memory keeper', PW/2, PH - 60);
-  ctx.fillText('Wissums Wissums  ·  storyscribe.app', PW/2, PH - 36);
+  ctx.fillText(`This memory book was crafted by ${BRAND.agentName}, your AI memory keeper`, PW/2, PH - 60);
+  ctx.fillText(`${BRAND.name}  ·  ${isWissums ? 'wissums.web.app' : 'storyscribe.app'}`, PW/2, PH - 36);
 }
 
 // ── COMPONENT ─────────────────────────────────────────────────────────────────
@@ -648,7 +668,7 @@ export function DownloadMemoryBook({ story, style }: Props) {
       await drawBackCover(backCvs.getContext('2d')!, tc, story, shareUrl);
       addPage(backCvs);
 
-      const filename = `${(story?.storytellerName || 'Story').replace(/\s+/g,'_')}_Memory_Book.pdf`;
+      const filename = `${(formatDisplayName(story?.storytellerName) || 'Story').replace(/\s+/g,'_')}_Memory_Book.pdf`;
       pdf.save(filename);
       setState('done');
       setTimeout(() => setState('idle'), 3000);

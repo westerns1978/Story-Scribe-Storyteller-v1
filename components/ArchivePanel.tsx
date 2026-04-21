@@ -7,6 +7,7 @@ import SparklesIcon from './icons/SparklesIcon';
 import GalaxyIcon from './icons/GalaxyIcon';
 import ConnectionFinderModal from './ConnectionFinderModal';
 import { LegacyGraph } from './LegacyGraph';
+import { formatDisplayName } from '../utils/nameUtils';
 
 interface ArchivePanelProps {
     stories: StoryArchiveItem[];
@@ -77,7 +78,7 @@ const ArchivePanel: React.FC<ArchivePanelProps> = ({
                                 <button onClick={() => onDelete(story.id)} className="p-3 text-slate-300 hover:text-red-500 transition-colors"><TrashIcon className="w-5 h-5"/></button>
                             </div>
                             <h3 className="text-2xl font-display font-bold text-gemynd-ink dark:text-white mb-1 leading-tight">{story.name}</h3>
-                            <p className="text-sm text-gemynd-terracotta font-serif italic mb-6">{story.storytellerName}</p>
+                            <p className="text-sm text-gemynd-terracotta font-serif italic mb-6">{formatDisplayName(story.storytellerName)}</p>
                             <div className="flex flex-wrap gap-2">
                                 {story.extraction?.themes.slice(0, 3).map((t, i) => (
                                     <span key={i} className="text-[10px] font-bold uppercase tracking-widest px-3 py-1 bg-gemynd-linen dark:bg-white/5 border border-gemynd-ink/5 rounded-full text-gemynd-terracotta/60">{t}</span>

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { StoryArchiveItem } from '../../types';
 import ConnectionFinderModal from '../../components/ConnectionFinderModal';
+import { formatDisplayName } from '../../utils/nameUtils';
 
 interface StoriesShelfProps {
   stories: StoryArchiveItem[];
@@ -77,8 +78,9 @@ export const StoriesShelf: React.FC<StoriesShelfProps> = ({
 
             <div className="flex flex-wrap gap-3 justify-start items-end relative z-20 pb-4">
               {stories.map((story) => {
-                const color = getThemeColor(story.storytellerName);
-                const initials = getInitials(story.storytellerName);
+                const displayName = formatDisplayName(story.storytellerName) || story.storytellerName;
+                const color = getThemeColor(displayName);
+                const initials = getInitials(displayName);
                 const isHovered = hoveredId === story.sessionId;
                 const coverImage = story.generatedImages?.[0]?.image_url || null;
                 return (
@@ -89,32 +91,37 @@ export const StoriesShelf: React.FC<StoriesShelfProps> = ({
                     onMouseLeave={() => setHoveredId(null)}
                     className="group relative flex-shrink-0 transition-all duration-300 focus:outline-none"
                     style={{ transform: isHovered ? 'translateY(-16px) scale(1.05)' : 'translateY(0) scale(1)' }}
-                    title={story.storytellerName}
+                    title={displayName}
                   >
-                    <div className="relative overflow-hidden rounded-t-sm" style={{ width: '72px', height: `${140 + (story.storytellerName.length % 3) * 20}px`, background: coverImage ? 'transparent' : `linear-gradient(135deg, ${color}ee 0%, ${color}99 100%)`, boxShadow: isHovered ? '6px 6px 20px rgba(0,0,0,0.7), -2px 0 8px rgba(0,0,0,0.4), inset -3px 0 8px rgba(0,0,0,0.3)' : '3px 3px 10px rgba(0,0,0,0.5), -1px 0 4px rgba(0,0,0,0.3), inset -2px 0 4px rgba(0,0,0,0.2)' }}>
-                      {coverImage && <img src={coverImage} alt={story.storytellerName} className="absolute inset-0 w-full h-full object-cover opacity-80" />}
+                    <div className="relative overflow-hidden rounded-t-sm" style={{ width: '72px', height: `${140 + (displayName.length % 3) * 20}px`, background: coverImage ? 'transparent' : `linear-gradient(135deg, ${color}ee 0%, ${color}99 100%)`, boxShadow: isHovered ? '6px 6px 20px rgba(0,0,0,0.7), -2px 0 8px rgba(0,0,0,0.4), inset -3px 0 8px rgba(0,0,0,0.3)' : '3px 3px 10px rgba(0,0,0,0.5), -1px 0 4px rgba(0,0,0,0.3), inset -2px 0 4px rgba(0,0,0,0.2)' }}>
+                      {coverImage && <img src={coverImage} alt={displayName} className="absolute inset-0 w-full h-full object-cover opacity-80" />}
                       <div className="absolute inset-0" style={{ background: coverImage ? `linear-gradient(180deg, ${color}88 0%, ${color}dd 100%)` : 'transparent' }} />
                       <div className="absolute left-0 top-0 bottom-0 w-2" style={{ background: 'rgba(0,0,0,0.3)' }} />
                       {!coverImage && <div className="absolute inset-0 flex items-center justify-center"><div className="text-white/30 font-black text-3xl" style={{ fontFamily: 'Georgia, serif' }}>{initials}</div></div>}
                       <div className="absolute inset-0 flex items-end justify-center pb-4 px-1">
                         <div className="text-white font-black text-[8px] uppercase tracking-widest text-center leading-tight" style={{ textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>
-                          {story.storytellerName.split(' ').map((word, i) => <div key={i}>{word}</div>)}
+                          {displayName.split(' ').map((word, i) => <div key={i}>{word}</div>)}
                         </div>
                       </div>
                       {isHovered && <div className="absolute inset-0 bg-white/10 pointer-events-none" />}
                     </div>
-                    {isHovered && (
-                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 z-30 pointer-events-none" style={{ minWidth: '170px', maxWidth: '210px' }}>
-                        <div className="bg-[#1A1208] border border-heritage-warmGold/30 rounded-xl px-4 py-3 text-center shadow-2xl">
-                          <div className="text-white font-black text-[10px] uppercase tracking-wider">{story.storytellerName}</div>
-                          <div className="text-white/40 text-[9px] mt-0.5">{formatDate(story.savedAt || '')}</div>
-                          {story.narrative && <div className="text-white/50 text-[9px] mt-2 font-serif italic leading-relaxed border-t border-white/10 pt-2">{story.narrative.slice(0, 80).replace(/\s\S+$/, '') + '…'}</div>}
-                          {(story.generatedImages?.length || 0) > 0 && <div className="text-heritage-warmGold/50 text-[8px] mt-1.5 font-black uppercase tracking-widest">{story.generatedImages!.length} scenes</div>}
-                          <div className="text-heritage-warmGold/70 text-[9px] mt-1.5 font-serif italic">▶ Watch legacy</div>
+                    {isHovered && (() => {
+                      const previewRaw = (story as any).firstBeatPreview || story.narrative || '';
+                      const preview = previewRaw ? previewRaw.slice(0, 120).replace(/\s\S*$/, '') + '…' : '';
+                      const dateStr = (story as any).updatedAt || story.savedAt || '';
+                      return (
+                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 z-30 pointer-events-none" style={{ minWidth: '180px', maxWidth: '220px' }}>
+                          <div className="bg-[#1A1208] border border-heritage-warmGold/30 rounded-xl px-4 py-3 text-center shadow-2xl">
+                            <div className="text-white font-black text-[10px] uppercase tracking-wider">{displayName}</div>
+                            <div className="text-white/40 text-[9px] mt-0.5">{formatDate(dateStr)}</div>
+                            {preview && <div className="text-white/55 text-[9px] mt-2 font-serif italic leading-relaxed border-t border-white/10 pt-2">{preview}</div>}
+                            {(story.generatedImages?.length || 0) > 0 && <div className="text-heritage-warmGold/50 text-[8px] mt-1.5 font-black uppercase tracking-widest">{story.generatedImages!.length} scenes</div>}
+                            <div className="text-heritage-warmGold/70 text-[9px] mt-1.5 font-serif italic">▶ Watch legacy</div>
+                          </div>
+                          <div className="w-2 h-2 bg-[#1A1208] border-r border-b border-heritage-warmGold/30 mx-auto -mt-1 rotate-45" />
                         </div>
-                        <div className="w-2 h-2 bg-[#1A1208] border-r border-b border-heritage-warmGold/30 mx-auto -mt-1 rotate-45" />
-                      </div>
-                    )}
+                      );
+                    })()}
                   </button>
                 );
               })}

@@ -5,13 +5,43 @@ import { Customer, ActiveStory, StoryArchiveItem, NeuralAsset } from './types';
 import { generateStoryWithMagic } from './services/api';
 import { WissumsLanding } from './components/WissumsLanding';
 import { LandingGate } from './components/LandingGate';
-import { isWissums } from './utils/brandUtils';
+import { isWissums, BRAND } from './utils/brandUtils';
 import StoryLoadingCinema from './components/StoryLoadingCinema';
 import { usePersistentSession } from './hooks/usePersistentSession';
 import { checkElderlyMode, enableElderlyMode } from './utils/accessibility';
-import { saveStory, getArchivedStories, loadStory as loadStoryFromVault } from './services/archiveService';
+import { saveStory, getArchivedStories, loadStory as loadStoryFromVault, purgeLocalStoryCaches } from './services/archiveService';
 import { createCheckoutSession, verifyPayment, Tier } from './services/stripeService';
 import Loader2Icon from './components/icons/Loader2Icon';
+// ── Demo stories imported statically — loaded with the main bundle so
+//     ?demo=pet and ?demo=human can bootstrap straight into the cinematic
+//     with zero network round-trip, zero dynamic-import delay.
+import { DEMO_STORY_CLOVER, DEMO_STORY_WALTER } from './data/demoStories';
+
+// ── Demo pre-flight — runs at module load, BEFORE React mounts ──────────────
+// If ?demo=pet or ?demo=human is present we capture the story and flag here
+// so the initial render can go DIRECTLY to the cinematic with no landing
+// screen, no auth gate, no loading skeleton flash.
+//
+// ?demo=bill is a third variant: it loads a LIVE story from the archive
+// (session e88a44f2-...) and drops the viewer straight into the shared-story
+// cinematic path — same UX as a /story/:id share link, but reachable from
+// a memorable URL for the Google Cloud Next stage demo.
+const _demoParam = typeof window !== 'undefined'
+  ? new URLSearchParams(window.location.search).get('demo')
+  : null;
+const _demoType: 'pet' | 'human' | null =
+  _demoParam === 'pet' || _demoParam === 'human' ? _demoParam : null;
+const _demoBillStoryId: string | null =
+  _demoParam === 'bill' ? 'e88a44f2-0295-4a9f-846b-8c794b1c3589' : null;
+const _bootstrapDemoStory: ActiveStory | null = _demoType === 'pet'
+  ? (DEMO_STORY_CLOVER as ActiveStory)
+  : _demoType === 'human'
+    ? (DEMO_STORY_WALTER as ActiveStory)
+    : null;
+if ((_demoType || _demoBillStoryId) && typeof window !== 'undefined') {
+  // Strip the query string so refresh keeps the demo state but reload-as-fresh works
+  try { window.history.replaceState({}, '', '/'); } catch {}
+}
 
 // Storyteller Flow Screens
 import { WelcomeScreen } from './pages/storyteller/WelcomeScreen';
@@ -24,6 +54,13 @@ import { StoriesShelf } from './pages/storyteller/StoriesShelf';
 // Admin Mode (legacy)
 import { StorytellerLayout } from './layouts/StorytellerLayout';
 import ConnieChatWidget from './components/ConnieChatWidget';
+
+// ── Module-level warmup — fires the instant the JS bundle loads ─────────────
+const _warmup = fetch('https://ldzzlndsspkyohvzfiiu.supabase.co/functions/v1/story-cascade', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxkenpsbmRzc3BreW9odnpmaWl1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE3MTEzMDUsImV4cCI6MjA3NzI4NzMwNX0.SK2Y7XMzeGQoVMq9KAmEN1vwy7RjtbIXZf6TyNneFnI', 'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxkenpsbmRzc3BreW9odnpmaWl1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE3MTEzMDUsImV4cCI6MjA3NzI4NzMwNX0.SK2Y7XMzeGQoVMq9KAmEN1vwy7RjtbIXZf6TyNneFnI' },
+  body: JSON.stringify({ action: 'ping' }),
+}).catch(() => {});
 
 type StorytellerPhase = 'landing' | 'welcome' | 'gathering' | 'connie' | 'creating' | 'story' | 'shelf' | 'admin';
 
@@ -42,23 +79,30 @@ const LoadingScreen: React.FC<{ message: string }> = ({ message }) => (
 
 const App: React.FC = () => {
   const { isAuthenticated, user, login, logout } = usePersistentSession();
-  const [isInitialized, setIsInitialized] = useState(false);
+  // ── DEMO BOOTSTRAP — if _demoType was detected pre-mount, ALL of these
+  //    initial states jump straight to the cinematic. Zero gates.
+  const [isInitialized, setIsInitialized] = useState(!!_demoType);
   const [sharedStory, setSharedStory] = useState<ActiveStory | null>(null);
   const [isLoadingShared, setIsLoadingShared] = useState(false);
   const [tributeStoryId, setTributeStoryId] = useState<string | null>(null);
   const [tributeSubject, setTributeSubject] = useState<string>('');
 
   // ── Stripe / tier state ────────────────────────────────────────────────────
-  const [paidTier, setPaidTier] = useState<Tier | null>(null);
+  const [paidTier, setPaidTier] = useState<Tier | null>(_demoType ? 'basic' : null);
   const [isCheckingPayment, setIsCheckingPayment] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
 
-  const [phase, setPhase] = useState<StorytellerPhase>(isWissums ? 'landing' : 'welcome');
-  const [subject, setSubject] = useState('');
+  const [phase, setPhase] = useState<StorytellerPhase>(
+    _demoType ? 'story' : (isWissums ? 'landing' : 'welcome')
+  );
+  const [subject, setSubject] = useState(_bootstrapDemoStory?.storytellerName || '');
   const [language, setLanguage] = useState('en');
-  const [narratorVoice, setNarratorVoice] = useState<'Kore' | 'Fenrir'>('Kore');
-  const [petMode, setPetMode] = useState(isWissums);
-  const [persona, setPersona] = useState<'curator' | 'keeper' | 'pet'>(isWissums ? 'pet' : 'curator');
+  // Reverted to Aoede — warm feminine narrator via generate_narration
+  const [narratorVoice, setNarratorVoice] = useState<string>('Aoede');
+  const [petMode, setPetMode] = useState(_demoType === 'pet' || isWissums);
+  const [persona, setPersona] = useState<'curator' | 'keeper' | 'pet'>(
+    _demoType === 'pet' || isWissums ? 'pet' : 'curator'
+  );
   const [savedStories, setSavedStories] = useState<{ sessionId: string; storytellerName: string; savedAt: string }[]>([]);
   const [fullSavedStories, setFullSavedStories] = useState<StoryArchiveItem[]>([]);
   const [storiesLoading, setStoriesLoading] = useState(true);
@@ -67,14 +111,22 @@ const App: React.FC = () => {
     artifacts: [],
     importedTexts: [],
   });
-  const [activeStory, setActiveStory] = useState<ActiveStory | null>(null);
+  const [activeStory, setActiveStory] = useState<ActiveStory | null>(_bootstrapDemoStory);
   const [storyFromShelf, setStoryFromShelf] = useState(false);
   const [progressStage, setProgressStage] = useState(0);
+  const [isDemoMode, setIsDemoMode] = useState(!!_demoType);
 
   const [adminActiveView, setAdminActiveView] = useState<string>('welcome');
   const [adminConnieOpen, setAdminConnieOpen] = useState(false);
 
   useEffect(() => {
+    // ── ONE-TIME LOCAL STORY-CACHE PURGE ────────────────────────────────
+    // Older builds cached the shelf in IndexedDB (WissumsVault.stories) +
+    // a couple of speculative localStorage keys. Those caches can serve
+    // deleted stories during demos. Nuke them on every mount — cheap,
+    // idempotent, and guarantees the shelf is a live Supabase read.
+    purgeLocalStoryCaches();
+
     if (checkElderlyMode()) enableElderlyMode();
     const initializeApp = async () => {
       const params = new URLSearchParams(window.location.search);
@@ -108,6 +160,28 @@ const App: React.FC = () => {
         }
       } else if (paymentStatus === 'cancelled') {
         window.history.replaceState({}, '', '/');
+      }
+
+      // ── DEMO MODE — handled at module-load pre-mount (see _demoType above)
+      //    so the first render goes DIRECTLY to the cinematic. Nothing to do
+      //    here — just short-circuit the rest of initialization.
+      if (_demoType) return;
+
+      // ── ?demo=bill — loads a live archive story into the shared-story path.
+      //    Same UX as /story/e88a44f2-... but from a stage-friendly URL.
+      if (_demoBillStoryId) {
+        setIsLoadingShared(true);
+        try {
+          const story = await loadStoryFromVault(_demoBillStoryId);
+          if (story) setSharedStory(story);
+          else console.warn('[DemoBill] Story not found:', _demoBillStoryId);
+        } catch (e) {
+          console.error('[DemoBill] Load failed', e);
+        } finally {
+          setIsLoadingShared(false);
+          setIsInitialized(true);
+        }
+        return;
       }
 
       // ── Check for stored tier in session ────────────────────────────────
@@ -193,7 +267,19 @@ const App: React.FC = () => {
   const handleLogin = (c: Customer) => login(c);
   const handleLogout = () => { logout(); setPaidTier(null); sessionStorage.removeItem('wissums_tier'); window.location.href = '/'; };
 
-  const handleBegin = useCallback((name: string, lang: string, voice: 'Kore' | 'Fenrir' = 'Kore', isPet: boolean = isWissums, selectedPersona: 'curator' | 'keeper' | 'pet' = isWissums ? 'pet' : 'curator') => {
+  // ── Demo mode: load pre-built story, skip auth + generation ───────────────
+  const handleDemoMode = useCallback(async () => {
+    setActiveStory(DEMO_STORY_CLOVER);
+    setSubject(DEMO_STORY_CLOVER.storytellerName);
+    setPetMode(true);
+    setNarratorVoice('Aoede');
+    setPaidTier('basic');
+    setIsDemoMode(true);
+    setStoryFromShelf(false);
+    setPhase('story');
+  }, []);
+
+  const handleBegin = useCallback((name: string, lang: string, voice: string = 'Aoede', isPet: boolean = isWissums, selectedPersona: 'curator' | 'keeper' | 'pet' = isWissums ? 'pet' : 'curator') => {
     setSubject(name || '');
     setLanguage(lang || 'en');
     setNarratorVoice(voice);
@@ -261,8 +347,10 @@ const App: React.FC = () => {
     musicQuery?: string,
     imagePalette?: string,
     isPet?: boolean,
-    verifiedPhotoFacts?: string[]
+    verifiedPhotoFacts?: string[],
+    narratorVoiceOverride?: string
   ) => {
+    if (narratorVoiceOverride) setNarratorVoice(narratorVoiceOverride);
     setPhase('creating');
     setProgressStage(0);
     try {
@@ -272,7 +360,7 @@ const App: React.FC = () => {
       ].filter(Boolean).join('\n\n---\n\n');
 
       if (!allText.trim()) {
-        alert('Please share at least one memory \u2014 talk to Connie, upload photos, or add a description.');
+        alert(`Please share at least one memory \u2014 talk to ${BRAND.agentName}, upload photos, or add a description.`);
         setPhase('gathering');
         return;
       }
@@ -409,7 +497,7 @@ const App: React.FC = () => {
     const shareTitle = `${story.storytellerName}'s Story`;
     const shareText = isWissums
       ? `Check out ${story.storytellerName}'s story on Wissums!`
-      : `Connie preserved this story — ${shareTitle}`;
+      : `${BRAND.agentName} preserved this story — ${shareTitle}`;
 
     if (navigator.share) {
       try { await navigator.share({ title: shareTitle, text: shareText, url: shareUrl }); return; }
@@ -473,7 +561,28 @@ const App: React.FC = () => {
   }, []);
   if (isLoadingShared || (!minSplashDone && sharedStory)) return <StoryLoadingCinema storytellerName={sharedStory?.storytellerName || pendingName} />;
   if (isCheckingPayment) return <LoadingScreen message="Verifying payment..." />;
-  if (!isInitialized) return null;
+  if (!isInitialized) return (
+    <div className="h-screen bg-[#0D0B0A] flex flex-col items-center justify-center px-8">
+      <div className="w-full max-w-md space-y-6 animate-pulse">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-16 h-16 rounded-full bg-white/5" />
+          <div className="h-4 w-48 rounded-full bg-white/5" />
+          <div className="h-3 w-64 rounded-full bg-white/[0.03]" />
+        </div>
+        <div className="space-y-3 pt-4">
+          <div className="h-14 rounded-2xl bg-white/[0.03] border border-white/[0.04]" />
+          <div className="h-14 rounded-2xl bg-white/[0.03] border border-white/[0.04]" />
+        </div>
+        <div className="flex gap-3 pt-2">
+          <div className="flex-1 h-24 rounded-2xl bg-white/[0.03] border border-white/[0.04]" />
+          <div className="flex-1 h-24 rounded-2xl bg-white/[0.03] border border-white/[0.04]" />
+        </div>
+        <div className="text-center pt-6">
+          <p className="text-white/20 text-[10px] font-black uppercase tracking-[0.4em]">Preparing your experience...</p>
+        </div>
+      </div>
+    </div>
+  );
 
   // ── Share link — show story publicly, no auth required ────────────────────
   if (sharedStory) {
@@ -509,10 +618,10 @@ const App: React.FC = () => {
   // ── Wissums paywall — only on wissums.web.app ──────────────────────────────
   if (isWissums) {
     if (!paidTier && phase === 'landing') {
-      return <WissumsLanding onSelectTier={handleSelectTier} isLoading={checkoutLoading} />;
+      return <WissumsLanding onSelectTier={handleSelectTier} isLoading={checkoutLoading} onDemoMode={handleDemoMode} />;
     }
     if (!paidTier && !isAuthenticated) {
-      return <WissumsLanding onSelectTier={handleSelectTier} isLoading={checkoutLoading} />;
+      return <WissumsLanding onSelectTier={handleSelectTier} isLoading={checkoutLoading} onDemoMode={handleDemoMode} />;
     }
     // Auto-login as guest if paid but not authenticated
     if (paidTier && !isAuthenticated) {
@@ -523,13 +632,27 @@ const App: React.FC = () => {
     }
   }
 
-  // Story Scribe — show LandingGate if not authenticated
-  if (!isWissums && !isAuthenticated) {
+  // Story Scribe — show LandingGate if not authenticated (but bypass for demo)
+  if (!isWissums && !isAuthenticated && !isDemoMode) {
     return <LandingGate onLogin={handleLogin} />;
   }
 
   return (
     <div className="h-screen w-screen overflow-hidden">
+      {/* Demo mode badge */}
+      {isDemoMode && (
+        <div style={{
+          position: 'fixed', top: 10, left: '50%', transform: 'translateX(-50%)',
+          zIndex: 9999, pointerEvents: 'none',
+          padding: '4px 14px', borderRadius: 20,
+          background: 'rgba(196,151,59,0.15)', border: '1px solid rgba(196,151,59,0.35)',
+          backdropFilter: 'blur(8px)',
+          fontSize: 9, fontWeight: 900, letterSpacing: '0.35em', textTransform: 'uppercase',
+          color: 'rgba(196,151,59,0.7)',
+        }}>
+          Demo Mode
+        </div>
+      )}
       <ErrorBoundary>
         <AnimatePresence mode="wait">
           {phase === 'welcome' && (
@@ -568,6 +691,7 @@ const App: React.FC = () => {
                 onCreate={handleCreateStory}
                 onExit={handleRestart}
                 petMode={petMode}
+                onSetSubject={(name: string) => setSubject(name)}
               />
             </motion.div>
           )}
@@ -604,7 +728,8 @@ const App: React.FC = () => {
                 onBack={() => setPhase('welcome')}
                 onRefineNarrative={handleRefineNarrative}
                 onShare={() => handleShareStory(activeStory)}
-                autoPlayCinematic={!storyFromShelf}
+                autoPlayCinematic={true}
+                autoStart={isDemoMode}
                 paidTier={paidTier}
               />
             </motion.div>

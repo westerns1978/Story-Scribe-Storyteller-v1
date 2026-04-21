@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { ActiveStory } from '../../types';
+import { ActiveStory } from '../types';
+import { formatDisplayName } from '../utils/nameUtils';
 
 // ─── Inline icons ──────────────────────────────────────────────────────────────
 const MapPinIcon: React.FC<{className?:string}> = ({className=''}) => (
@@ -154,7 +155,7 @@ const MemoryMapView: React.FC<{ story: ActiveStory | null }> = ({ story }) => {
             Life Map
           </span>
           <h2 className="text-4xl font-display font-black text-white tracking-tight mb-2">
-            {story.storytellerName}'s World
+            {formatDisplayName(story.storytellerName)}'s World
           </h2>
           <p className="text-white/30 font-serif italic text-sm">
             {rawLocations.length} {rawLocations.length === 1 ? 'place' : 'places'} that shaped this life
